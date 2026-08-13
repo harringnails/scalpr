@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scalpr Trade</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap');
+  :root {
+    --bg:#0C1014; --panel:#141A21; --edge:#212B36; --text:#D7E0E8;
+    --dim:#6E7E8D; --faint:#3A4652; --green:#3DDC84; --amber:#FFB020;
+    --blade:#FF3B4E; --steel:#7FB4D6;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:13px; }
+  .wrap { max-width:1060px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-family:'Space Grotesk',sans-serif; font-size:38px; margin:0; letter-spacing:.04em; }
+  h1 span.slash { color:var(--blade); }
+  h2 { font-family:'Space Grotesk',sans-serif; font-size:13px; letter-spacing:.1em;
+       text-transform:uppercase; color:var(--dim); margin:26px 0 10px; }
+  .tag { font-size:11px; color:var(--dim); }
+  .help { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:1px solid var(--dim); color:var(--dim); font-size:9px; margin-left:5px; cursor:help; position:relative; }
+  .help:hover::after { content:attr(data-tip); position:absolute; bottom:130%; left:50%; transform:translateX(-50%); width:240px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-size:11px; line-height:1.5; color:var(--text); text-align:left; z-index:20; box-shadow:0 4px 14px rgba(0,0,0,.5); white-space:normal; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:4px; font-weight:700;
+           font-size:11px; letter-spacing:.08em; vertical-align:middle; margin-left:10px; }
+  .badge.paper { background:#12351f33; color:var(--green); border:1px solid var(--green); }
+  .badge.live  { background:#3a0d1233; color:var(--blade); border:1px solid var(--blade);
+                 animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .cp-flash { display:none; }
+  .cp-flash.show {
+    display:inline-block; font-family:'Space Grotesk',sans-serif; font-weight:700;
+    font-size:16px; letter-spacing:.1em; padding:8px 16px; border-radius:6px;
+    margin-left:10px; vertical-align:middle; animation:flashPop 1.8s ease-out forwards;
+  }
+  .cp-flash.call { background:#12351f88; color:var(--green); border:1px solid var(--green); }
+  .cp-flash.put  { background:#3a0d1288; color:var(--blade); border:1px solid var(--blade); }
+  .banner { padding:9px 14px; border-radius:8px; margin:6px 0; font-family:'Space Grotesk',sans-serif;
+            display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .banner .lvl { font-weight:700; letter-spacing:.06em; font-size:14px; }
+  .banner .rzn { color:var(--dim); font-size:12px; }
+  .banner.green  { background:#12351f55; border:1px solid var(--green); } .banner.green .lvl  { color:var(--green); }
+  .banner.yellow { background:#3a2e0d55; border:1px solid var(--amber); } .banner.yellow .lvl { color:var(--amber); }
+  .banner.red    { background:#3a0d1255; border:1px solid var(--blade); } .banner.red .lvl    { color:var(--blade); }
+  .chip { display:inline-block; font-size:10px; padding:1px 6px; border-radius:3px; margin-left:6px;
+          letter-spacing:.03em; vertical-align:middle; }
+  .chip.available   { background:#12351f66; color:var(--green); border:1px solid var(--green); }
+  .chip.degraded    { background:#3a2e0d66; color:var(--amber); border:1px solid var(--amber); }
+  .chip.stale       { background:#3a2e0d66; color:var(--amber); border:1px solid var(--amber); }
+  .chip.unavailable { background:#2a2f3699; color:var(--dim);   border:1px solid var(--faint); }
+  .pmrow { display:flex; align-items:baseline; gap:8px; padding:3px 0; }
+  .pmrow .lab { width:120px; color:var(--dim); }
+  .pmrow .val { font-weight:700; }
+  @keyframes flashPop {
+    0%   { opacity:0; transform:scale(.9); }
+    12%  { opacity:1; transform:scale(1.08); }
+    25%  { opacity:1; transform:scale(1); }
+    75%  { opacity:1; }
+    100% { opacity:0; }
+  }
+  .panel { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  .market { color:var(--steel); font-size:12px; margin-top:10px; }
+  form .row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--dim); }
+  input, select { background:var(--bg); border:1px solid var(--edge); color:var(--text);
+                  border-radius:5px; padding:8px 10px; font-family:inherit; font-size:13px; }
+  input:focus, select:focus { outline:1px solid var(--steel); }
+  input[type=number] { width:110px; }
+  button { font-family:inherit; font-weight:700; font-size:12px; border-radius:6px;
+           padding:10px 16px; cursor:pointer; background:var(--panel);
+           color:var(--text); border:1px solid var(--edge); }
+  button.primary { background:var(--green); color:#08120C; border-color:var(--green);
+                   font-size:14px; padding:12px 20px; }
+  button.danger { color:var(--blade); border-color:var(--blade); background:transparent; }
+  button:disabled { opacity:.45; cursor:default; }
+  table.ladder { border-collapse:collapse; }
+  table.ladder td { padding:3px 6px 3px 0; }
+  table.ladder input { width:90px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  .card.armed { border-color:var(--blade); }
+  .card .sym { font-family:'Space Grotesk',sans-serif; font-size:18px; font-weight:700; }
+  .card .big { font-size:26px; font-weight:700; margin:6px 0; }
+  .pos { color:var(--green); } .neg { color:var(--blade); }
+  .kv { display:flex; justify-content:space-between; color:var(--dim);
+        font-size:12px; padding:2px 0; }
+  .kv b { color:var(--text); font-weight:500; }
+  .razor { color:var(--blade); font-weight:700; }
+  .state { font-size:11px; font-weight:700; letter-spacing:.06em; }
+  .empty { color:var(--faint); font-size:12px; }
+  table.journal { width:100%; border-collapse:collapse; font-size:12px; }
+  table.journal th { text-align:right; color:var(--dim); font-weight:500; padding:6px 10px;
+    position:sticky; top:0; background:var(--panel); z-index:1; }
+  table.journal td { text-align:right; padding:6px 10px; border-top:1px solid var(--edge); }
+  table.journal th:first-child, table.journal td:first-child { text-align:left; }
+  tr.dayhdr td { text-align:left; background:var(--bg); color:var(--steel); font-weight:700;
+    letter-spacing:.03em; cursor:pointer; padding:6px 10px; border-top:1px solid var(--edge);
+    position:sticky; top:27px; }
+  tr.dayhdr:hover td { color:var(--text); }
+  #msg { min-height:18px; font-size:12px; margin-top:8px; }
+  #msg.err { color:var(--blade); } #msg.ok { color:var(--green); }
+  .foot { color:var(--faint); font-size:11px; margin-top:34px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SCALPR<span class="slash">/</span>TRADE<span id="modeBadge" class="badge paper">PAPER</span></h1>
+    <div class="tag">Manual execution; automated direction runs shadow-only. The ladder guards authorized trades.</div>
+    <div class="market" id="market">—</div>
+    <div class="tag" id="microRead" style="margin-top:4px">—</div>
+    <label class="tag" style="flex-direction:row;align-items:center;gap:6px;margin-top:6px;cursor:pointer">
+      <input type="checkbox" id="soundToggle" checked onchange="toggleSound()" style="width:auto"> trade sounds (buy / sell)
+    </label>
+  </header>
+
+  <details id="researchDiagnostics" ontoggle="refreshResearchDiagnostics()"
+           style="margin:6px 0;border:1px solid var(--edge);border-radius:6px;padding:7px 10px">
+    <summary class="tag" style="cursor:pointer;color:var(--steel)">Research diagnostics — non-blocking, no approval required</summary>
+    <div id="dataBanner" class="banner red">
+      <span class="lvl">DATA CONFIDENCE: —</span>
+      <span class="rzn">open to refresh the research read</span></div>
+    <div id="tradeBanner" class="banner red">
+      <span class="lvl">TRADE READINESS: NO QUALIFIED POLICY</span>
+      <span class="rzn">Research status only; manual trading remains available.</span></div>
+    <div id="entryRead" class="tag" style="margin:2px 0 6px;padding:6px 10px;border:1px dashed var(--edge);border-radius:6px">—</div>
+    <div id="directionalShadow" class="tag" style="margin:2px 0 2px;padding:8px 10px;border:1px solid var(--edge);border-radius:6px">AUTOMATED DIRECTIONAL SHADOW · open to refresh</div>
+    <div id="evidenceExplanation" class="tag"
+         style="margin:6px 0 2px;padding:10px;border:1px solid var(--edge);border-radius:6px;line-height:1.55">
+      <div style="font-family:'Space Grotesk',sans-serif;color:var(--steel);letter-spacing:.05em">EVIDENCE EXPLANATION · DETERMINISTIC</div>
+      <div id="explanationStatus" style="color:var(--faint);margin:2px 0 7px">Open to refresh. No external AI calls.</div>
+      <div id="explanationRendered"></div>
+      <div style="margin-top:9px;color:var(--steel);font-weight:700">Deterministic brief — source of truth</div>
+      <div id="explanationBrief" style="margin-top:3px;max-height:230px;overflow:auto;padding:7px;background:var(--bg);border-radius:4px"></div>
+    </div>
+  </details>
+  <div id="guardSafety" class="banner red" style="display:none;margin-top:6px">
+    <span class="lvl">GUARD SAFETY: —</span><span class="rzn">—</span></div>
+
+  <h2>New trade</h2>
+  <div class="panel">
+    <form id="tradeForm" onsubmit="return false;">
+      <div class="row">
+        <label>Symbol / OCC contract
+          <input id="symbol" placeholder="Equity option contract (0–60 DTE)" required />
+        </label>
+        <label>Type
+          <select id="type">
+            <option value="option" selected>Manual equity option (0–60 DTE)</option>
+          </select>
+        </label>
+        <label id="allocLabel">Allocation ($)
+          <input id="alloc" type="number" value="1000" min="1" step="any" />
+        </label>
+        <label>Action
+          <select id="buyMode">
+            <option value="buy">Buy at market, then guard</option>
+            <option value="guard">Guard existing position</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Option contract builder — shown only when Type = Option -->
+      <div id="optBuilder" style="display:none; background:var(--bg); border:1px solid var(--edge);
+           border-radius:6px; padding:12px; margin-bottom:10px">
+        <div class="tag" style="margin-bottom:8px; color:var(--steel)">
+          Option contract builder — pick the pieces, Scalp assembles the symbol</div>
+        <div class="row" style="margin-bottom:8px">
+          <label>Underlying
+            <input id="optUnderlying" placeholder="SPY" style="width:90px"
+              oninput="this.value=this.value.toUpperCase()" />
+          </label>
+          <label>Call / Put
+            <select id="optCP">
+              <option value="C">Call</option>
+              <option value="P">Put</option>
+            </select>
+          </label>
+          <label>Expiration
+            <select id="optExpiry"><option value="">— load chain —</option></select>
+          </label>
+          <label>Strike
+            <select id="optStrike"><option value="">— pick expiry —</option></select>
+          </label>
+          <button type="button" id="optLoadBtn" onclick="loadExpirations()"
+            style="align-self:flex-end">Load chain</button>
+        </div>
+        <div id="optQuote" style="display:none; font-size:13px; padding:8px 0 2px">
+          <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:baseline">
+            <span>Bid <b id="qBid" style="color:var(--green)">—</b>
+              <span id="qBidSz" class="tag"></span></span>
+            <span>Ask <b id="qAsk" style="color:var(--blade)">—</b>
+              <span id="qAskSz" class="tag"></span></span>
+            <span>Last <b id="qLast">—</b></span>
+            <span style="margin-left:auto">Est. total cost
+              <b id="qCost" style="color:var(--amber)">—</b></span>
+          </div>
+          <div class="tag" id="qSym" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div id="manualScopeWarning" class="banner yellow" style="display:none;margin:0 0 10px">
+        <span class="lvl">OUT OF VALIDATED SCOPE</span>
+        <span class="rzn">Ratchet is tuned for SPY 0-2 DTE; behavior unvalidated. This trade is excluded from cohorts and validated metrics.</span>
+      </div>
+      <div class="row">
+        <div>
+          <div class="tag" style="margin-bottom:6px">Ladder — profit-activation &amp; allowed-giveback tiers (once peak reaches AT%, allow only TOL% giveback)</div>
+          <table class="ladder" id="ladder"></table>
+          <button type="button" onclick="addRung()">+ rung</button>
+          <div class="tag" style="margin-top:6px;color:var(--faint);max-width:340px">
+            <b>WHOLE_POSITION_RATCHET.</b> These are giveback tiers, not staged scale-out levels.
+            A valid exit sells <b>100% of the remaining position</b> in one order.
+            Partial profit-taking is not enabled (works the same for 1, 2, or many contracts).</div>
+        </div>
+        <label>Take profit if it goes flat for (seconds)
+          <span class="help" data-tip="If the trade stops making new highs for this many seconds, sell and bank the gain \u2014 catches a winner that stalls out instead of dipping.">?</span>
+          <input id="stallSec" type="number" value="45" min="0" />
+        </label>
+        <label>…but only once profit is above (%)
+          <input id="stallMin" type="number" value="20" min="0" step="any" />
+        </label>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <label>Give the trade room for (seconds)
+          <input id="graceSec" type="number" value="60" min="0" />
+        </label>
+        <label>Confirm an exit over (consecutive reads)
+          <input id="confirmTicks" type="number" value="2" min="1" max="10" />
+        </label>
+      </div>
+      <div class="row" style="margin-bottom:10px;border:1px dashed var(--edge);padding:10px;border-radius:6px">
+        <label style="flex-direction:row;align-items:center;gap:8px">
+          <input id="climbEnabled" type="checkbox" style="width:auto">
+          Paper climb adds (Wave gates)
+        </label>
+        <label>Add contracts per climb
+          <input id="climbQty" type="number" value="1" min="1" step="1" />
+        </label>
+        <label>Maximum adds
+          <input id="climbMax" type="number" value="2" min="1" max="5" step="1" />
+        </label>
+        <div class="tag" style="max-width:360px">Default off. SPY options only. Adds only while profitable,
+          ATR/VWAP aligned, synchronized, confirmed, within exposure caps, and never in live mode.</div>
+      </div>
+      <div class="tag" style="margin:8px 0 12px;color:var(--blade)">
+        Clicking <b>ENGAGE SCALPER · AUTO-EXIT</b> authorizes whole-position ratchet/stall exits for this submission.
+      </div>
+      <button class="primary" id="goBtn" onclick="submitTrade()">ENGAGE SCALPER · AUTO-EXIT</button>
+      <button type="button" id="checkBtn" onclick="runPrecheck()" style="margin-left:10px">Run pre-trade check</button>
+      <button type="button" id="premktBtn" onclick="runPremarket()" style="margin-left:10px">Premarket assessment</button>
+      <span id="cpFlash" class="cp-flash"></span>
+      <div id="msg"></div>
+      <div id="pcOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
+      <div id="pmOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
+    </form>
+  </div>
+
+  <h2>Guarded positions</h2>
+  <div class="cards" id="cards"><div class="empty">Nothing guarded yet.</div></div>
+
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:26px">
+    <h2 style="margin:0">Holdings <span class="tag" style="font-weight:400">— everything in your account</span></h2>
+    <button id="liqAllBtn" class="danger" onclick="liquidateAll()"
+      style="font-size:11px; padding:7px 12px">Liquidate all</button>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="journal" id="holdings"></table>
+  </div>
+  <div class="empty" id="holdingsEmpty">No open positions in your account.</div>
+
+  <h2>Performance <span class="tag" style="font-weight:400">— paper trades</span></h2>
+  <div id="statsEmpty" class="empty">No completed trades yet — stats appear once you've closed some scalps.</div>
+  <div id="statsPanel" style="display:none">
+    <div class="cards" id="statCards" style="margin-bottom:14px"></div>
+    <div id="bestWorst" style="font-size:12px; color:var(--dim); margin-bottom:6px"></div>
+  </div>
+
+  <h2>Journal</h2>
+  <div style="margin-bottom:6px">
+    <button id="journalToggle" onclick="toggleShowAll()" style="font-size:11px;padding:4px 10px">Show all</button>
+    <span class="tag" style="margin-left:8px">click a day to collapse/expand</span>
+  </div>
+  <div style="overflow:auto;max-height:360px;border:1px solid var(--edge);border-radius:6px">
+    <table class="journal" id="journal"></table>
+  </div>
+  <div id="journalTotal" class="tag" style="margin-top:6px;text-align:right"></div>
+  <div class="empty" id="journalEmpty">No completed scalps yet.</div>
+
+  <details id="exploratorySummaryDetails" ontoggle="refreshExploSummary()" style="margin-top:22px">
+    <summary class="tag" style="cursor:pointer;color:var(--steel)">Exploratory outcome archive — non-blocking research</summary>
+    <div id="exploSummary" class="tag" style="border:1px dashed var(--edge);border-radius:6px;padding:10px 12px;line-height:1.7">Open to refresh.</div>
+  </details>
+
+  <p class="foot">Ladder enforced server-side; market read is advisory and can never
+  loosen the ratchet. Paper mode uses fake money on live prices. Sell triggers fire at
+  the rule but fill at the next available price — fast markets can slip. Not investment advice.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── audio cues (synthesized, no files) ──────────────────────────────────
+let soundOn = true;
+let _ac = null;
+function _ctx() { if (!_ac) { try { _ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return _ac; }
+function _tones(seq) {   // seq: [{f, t0, dur}] frequencies/times in seconds
+  if (!soundOn) return;
+  const ac = _ctx(); if (!ac) return;
+  if (ac.state === 'suspended') ac.resume();
+  const now = ac.currentTime;
+  for (const n of seq) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = n.f;
+    o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.0001, now + n.t0);
+    g.gain.exponentialRampToValueAtTime(0.25, now + n.t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + n.t0 + n.dur);
+    o.start(now + n.t0); o.stop(now + n.t0 + n.dur + 0.02);
+  }
+}
+function playBuy()  { _tones([{f:523,t0:0,dur:0.12},{f:784,t0:0.10,dur:0.16}]); }   // rising C→G
+function playSell() { _tones([{f:659,t0:0,dur:0.12},{f:392,t0:0.10,dur:0.20}]); }   // falling E→G
+function toggleSound() { soundOn = $('soundToggle').checked; if (soundOn) _ctx(); }
+const defaultLadder = [{at:0,tol:5},{at:10,tol:1},{at:20,tol:0.05}];
+
+function addRung(at='', tol='') {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>once up <input type="number" step="any" class="at" value="${at}"></td>
+                  <td>%, sell if it slips <input type="number" step="any" class="tol" value="${tol}"></td>
+                  <td>% <button type="button" onclick="this.closest('tr').remove()">×</button></td>`;
+  $('ladder').appendChild(tr);
+}
+defaultLadder.forEach(r => addRung(r.at, r.tol));
+
+// The top Symbol field is the one actually sent to the server on submit (see
+// submitTrade). The builder's Underlying field only drives the chain/quote
+// preview. If the two ever disagree, the quote you're looking at doesn't
+// match the order that goes out — so Symbol always drives Underlying, never
+// the other way around.
+function syncUnderlyingFromSymbol() {
+  if ($('type').value !== 'option') return;
+  const raw = $('symbol').value.trim().toUpperCase();
+  const occMatch = raw.match(/^([A-Z]{1,6})\d{6}[CP]\d{8}$/);
+  const plainTicker = /^[A-Z]{1,6}$/.test(raw);
+  const underlying = occMatch ? occMatch[1] : (plainTicker ? raw : null);
+  if (!underlying || underlying === $('optUnderlying').value) return;
+  $('optUnderlying').value = underlying;
+  if (!occMatch) {
+    // typed a fresh ticker, not a fully-formed contract — the old chain is stale
+    $('optExpiry').innerHTML = '<option value="">— load chain —</option>';
+    $('optStrike').innerHTML = '<option value="">— pick expiry —</option>';
+    $('optQuote').style.display = 'none';
+    clearInterval(quoteTimer);
+  }
+}
+
+function manualSelection() {
+  const raw = $('symbol').value.trim().toUpperCase();
+  const occ = raw.match(/^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})[CP]\d{8}$/);
+  let underlying = $('optUnderlying').value.trim().toUpperCase();
+  let expiry = $('optExpiry').value;
+  if (occ) {
+    underlying = occ[1];
+    expiry = `20${occ[2]}-${occ[3]}-${occ[4]}`;
+  }
+  let dte = null;
+  if (expiry) {
+    const now = new Date();
+    const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    dte = Math.round((new Date(expiry + 'T12:00:00') - localDate) / 86400000);
+  }
+  return {underlying, dte,
+    out: !!underlying && (underlying !== 'SPY' || (dte !== null && dte > 2))};
+}
+
+function updateManualScopeWarning() {
+  const selection = manualSelection();
+  $('manualScopeWarning').style.display = selection.out ? 'flex' : 'none';
+  if (selection.out) {
+    $('climbEnabled').checked = false;
+    $('climbEnabled').disabled = true;
+  } else {
+    $('climbEnabled').disabled = false;
+  }
+}
+
+$('type').addEventListener('change', () => {
+  const isOpt = $('type').value === 'option';
+  $('allocLabel').firstChild.textContent = isOpt ? 'Contracts (qty) ' : 'Allocation ($) ';
+  $('alloc').value = isOpt ? 1 : 1000;
+  $('optBuilder').style.display = isOpt ? 'block' : 'none';
+  const rungs = isOpt ? [{at:0,tol:15},{at:15,tol:6},{at:30,tol:2.5}]
+                      : [{at:0,tol:5},{at:10,tol:1},{at:20,tol:0.05}];
+  $('ladder').innerHTML = '';
+  rungs.forEach(r => addRung(r.at, r.tol));
+  $('graceSec').value = isOpt ? 60 : 30;
+  if (isOpt) syncUnderlyingFromSymbol();
+  if (isOpt && !$('optUnderlying').value) $('optUnderlying').value = 'SPY';
+});
+$('type').dispatchEvent(new Event('change'));
+
+$('symbol').addEventListener('input', syncUnderlyingFromSymbol);
+$('symbol').addEventListener('input', updateManualScopeWarning);
+$('optUnderlying').addEventListener('input', updateManualScopeWarning);
+
+// recompute est. cost when qty changes
+$('alloc').addEventListener('input', updateCost);
+
+async function loadExpirations() {
+  const u = $('optUnderlying').value.trim();
+  const cp = $('optCP').value;
+  if (!u) return showMsg('Enter an underlying ticker first (e.g. SPY).', true);
+  $('optLoadBtn').disabled = true; $('optLoadBtn').textContent = 'Loading…';
+  try {
+    const r = await fetch(`/api/option/expirations?underlying=${u}&type=${cp}`);
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const { expirations } = await r.json();
+    if (!expirations.length) { showMsg(`No ${cp === 'C' ? 'call' : 'put'} contracts found for ${u}.`, true);
+      return; }
+    const today = new Date().toISOString().slice(0, 10);
+    $('optExpiry').innerHTML = expirations.map(d => {
+      const days = Math.round((new Date(d) - new Date(today)) / 86400000);
+      const tag = days === 0 ? ' (0DTE)' : ` (${days}DTE)`;
+      return `<option value="${d}">${d}${tag}</option>`;
+    }).join('');
+    updateManualScopeWarning();
+    $('optStrike').innerHTML = '<option value="">— loading strikes —</option>';
+    showMsg('', false);
+    loadStrikes();
+  } catch (e) { showMsg('Chain load failed: ' + e.message, true); }
+  $('optLoadBtn').disabled = false; $('optLoadBtn').textContent = 'Load chain';
+}
+
+async function loadStrikes() {
+  const u = $('optUnderlying').value.trim();
+  const cp = $('optCP').value;
+  const exp = $('optExpiry').value;
+  if (!u || !exp) return;
+  try {
+    const r = await fetch(`/api/option/strikes?underlying=${u}&type=${cp}&expiry=${exp}`);
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const { strikes, underlying_price } = await r.json();
+    let atmIdx = 0;
+    if (underlying_price) {
+      let best = Infinity;
+      strikes.forEach((s, i) => { const dd = Math.abs(s.strike - underlying_price);
+        if (dd < best) { best = dd; atmIdx = i; } });
+    }
+    $('optStrike').innerHTML = strikes.map((s, i) =>
+      `<option value="${s.symbol}" data-strike="${s.strike}"${i === atmIdx ? ' selected' : ''}>$${s.strike.toFixed(2)}${i === atmIdx ? '  \u2190 at the money' : ''}</option>`).join('');
+    $('optStrike').selectedIndex = atmIdx;
+    updateManualScopeWarning();
+    if (underlying_price) showMsg(`${u} is near $${underlying_price.toFixed(2)} \u2014 defaulted to the closest strike. Near-the-money is liquid; far strikes may be un-sellable.`, false);
+    pickContract();
+  } catch (e) { showMsg('Strike load failed: ' + e.message, true); }
+}
+
+$('optExpiry').addEventListener('change', () => { updateManualScopeWarning(); loadStrikes(); });
+$('optStrike').addEventListener('change', pickContract);
+$('optCP').addEventListener('change', () => { if ($('optExpiry').value) loadExpirations(); });
+
+let quoteTimer = null;
+function pickContract() {
+  const sym = $('optStrike').value;
+  if (!sym) return;
+  $('symbol').value = sym;             // feed the assembled symbol into the real field
+  updateManualScopeWarning();
+  $('qSym').textContent = 'Contract: ' + sym;
+  $('optQuote').style.display = 'block';
+  quoteContract();
+  clearInterval(quoteTimer);
+  quoteTimer = setInterval(quoteContract, 5000);  // bounded to preserve Guard API budget
+}
+
+let lastQuote = null;
+async function quoteContract() {
+  const sym = $('optStrike').value;
+  if (!sym || $('type').value !== 'option') { clearInterval(quoteTimer); return; }
+  try {
+    const q = await (await fetch(`/api/option/quote?symbol=${sym}`)).json();
+    lastQuote = q;
+    $('qBid').textContent = q.bid ? q.bid.toFixed(2) : '—';
+    $('qAsk').textContent = q.ask ? q.ask.toFixed(2) : '—';
+    $('qBidSz').textContent = q.bid_size ? '× ' + q.bid_size : '';
+    $('qAskSz').textContent = q.ask_size ? '× ' + q.ask_size : '';
+    $('qLast').textContent = q.last ? q.last.toFixed(2) : '—';
+    updateCost();
+  } catch (e) { /* quiet — market may be closed */ }
+}
+
+function updateCost() {
+  if (!lastQuote) return;
+  const qty = parseFloat($('alloc').value) || 0;
+  // options are priced per share; 1 contract = 100 shares. Cost off the ask (what you'd pay).
+  const px = lastQuote.ask || lastQuote.last || lastQuote.bid || 0;
+  const cost = px * qty * 100;
+  $('qCost').textContent = cost ? '$' + cost.toLocaleString('en-US',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+}
+
+function flashCallPut() {
+  if ($('type').value !== 'option') return;
+  const sym = $('symbol').value.trim().toUpperCase();
+  const m = sym.match(/^[A-Z]{1,6}\d{6}([CP])\d{8}$/);
+  const cp = m ? m[1] : $('optCP').value;
+  const el = $('cpFlash');
+  el.textContent = cp === 'P' ? 'PUT ↓' : 'CALL ↑';
+  el.className = 'cp-flash';        // reset so the animation re-triggers on repeat clicks
+  void el.offsetWidth;               // force reflow
+  el.className = 'cp-flash show ' + (cp === 'P' ? 'put' : 'call');
+}
+
+async function submitTrade() {
+  flashCallPut();
+  const ladder = [...document.querySelectorAll('#ladder tr')].map(tr => ({
+    at: parseFloat(tr.querySelector('.at').value),
+    tol: parseFloat(tr.querySelector('.tol').value)
+  })).filter(r => !isNaN(r.at) && !isNaN(r.tol));
+  if (!ladder.length) return showMsg('Add at least one ladder rung.', true);
+  const cfg = {
+    symbol: $('symbol').value.trim(),
+    type: $('type').value,
+    buy: $('buyMode').value === 'buy',
+    ladder,
+    stall_seconds: parseInt($('stallSec').value) || 0,
+    stall_min_profit: parseFloat($('stallMin').value) || 0,
+    grace_seconds: parseInt($('graceSec').value) || 0,
+    confirm_ticks: parseInt($('confirmTicks').value) || 1
+  };
+  cfg.auto_exit_authorized = true;
+  cfg.climb_adds = {
+    enabled: $('climbEnabled').checked,
+    add_contracts: parseInt($('climbQty').value) || 1,
+    max_adds: parseInt($('climbMax').value) || 2
+  };
+  cfg.request_id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  if ($('type').value === 'option') cfg.qty = parseFloat($('alloc').value);
+  else cfg.notional = parseFloat($('alloc').value);
+  if (!cfg.symbol) return showMsg('Symbol required.', true);
+  $('goBtn').disabled = true;
+  showMsg('Placing order…');
+  try {
+    const res = await fetch('/api/trades', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      const text = await res.text();
+      try { detail = JSON.parse(text).detail || detail; }
+      catch { if (text.startsWith('<')) detail =
+        'The API is not answering here. Open the dashboard via scalp_server.py at http://localhost:8420 — not as a file or through another server.'; }
+      throw new Error(detail);
+    }
+    const g = await res.json();
+    playBuy();
+    showMsg(`Guarding ${g.symbol} — entry ${g.entry.toFixed(4)}.`, false);
+    prevGuardedSet = null;   // don't let the new position register as a "sell" next poll
+    refresh();
+  } catch (e) { showMsg(e.message, true); }
+  $('goBtn').disabled = false;
+}
+
+function showMsg(t, err) { const m = $('msg'); m.textContent = t;
+  m.className = err ? 'err' : 'ok'; }
+
+async function sellNow(sym) {
+  await fetch(`/api/positions/${sym}/sell`, { method:'POST' });
+  refresh();
+}
+
+const priceHist = {};   // symbol -> [last prices] for the sparkline
+
+function sparkline(vals) {
+  if (vals.length < 2) return '';
+  const w = 260, h = 40, lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || 1;
+  const pts = vals.map((v, i) =>
+    `${(i / (vals.length - 1)) * w},${h - ((v - lo) / span) * h}`).join(' ');
+  const up = vals[vals.length - 1] >= vals[0];
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+    style="display:block;margin:8px 0 4px">
+    <polyline points="${pts}" fill="none"
+      stroke="${up ? 'var(--green)' : 'var(--blade)'}" stroke-width="1.5"/></svg>`;
+}
+
+function freshness(age) {
+  if (age === null || age === undefined)
+    return `<span style="color:var(--dim)">awaiting first tick…</span>`;
+  const color = age < 3 ? 'var(--green)' : age < 15 ? 'var(--amber)' : 'var(--blade)';
+  const dot = age < 3 ? '●' : '○';
+  return `<span style="color:${color}">${dot} feed ${age.toFixed(1)}s ago</span>`;
+}
+
+function cssId(sym) { return sym.replace(/[^A-Za-z0-9]/g, '_'); }
+
+function card(p) {
+  const paused = !!p.paused;
+  const degraded = p.quote_status !== 'OK';
+  const armed = !paused && !degraded && (p.tolerance <= 0.1 || p.peak >= 20);
+  const cls = p.profit === null ? 'neg' : (p.profit >= 0 ? 'pos' : 'neg');
+  const hist = priceHist[p.symbol] || [];
+  if (p.last !== null) priceHist[p.symbol] = hist.concat(p.last).slice(-60);
+  const stateLabel = degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (armed ? 'RAZOR TIGHT' : 'GUARDING'));
+  const stateColor = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (armed ? 'var(--blade)' : 'var(--steel)'));
+  const guardBtn = paused
+    ? `<button onclick="resumeGuard('${p.symbol}')" style="background:var(--green);color:#04140b">Enable automatic sells</button>`
+    : `<button onclick="pauseGuard('${p.symbol}')">Pause automatic sells</button>`;
+  return `<div class="card ${armed ? 'armed' : ''}" id="card-${cssId(p.symbol)}"
+       style="${paused ? 'border-color:var(--amber)' : ''}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span class="sym">${p.symbol}</span>
+      <span class="state c-state" style="color:${stateColor}">${stateLabel}</span>
+    </div>
+    <div class="big c-big ${cls}">${p.profit === null ? 'UNAVAILABLE' : `${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(3)}%`}</div>
+    <div class="c-spark">${sparkline(priceHist[p.symbol] || [])}</div>
+    <div class="kv"><span>executable bid / entry</span><b class="c-lastentry">${p.last === null ? '—' : p.last.toFixed(4)} / ${p.entry.toFixed(4)}</b></div>
+    <div class="kv"><span>peak</span><b class="c-peak">+${p.peak.toFixed(3)}%</b></div>
+    <div class="kv"><span>tolerance now</span><b class="c-tol">${p.tolerance}%</b></div>
+    <div class="kv"><span>sells at</span><b class="razor c-sells">${degraded ? 'unprotected — no executable bid' : (paused ? 'paused — no exits' : (p.sell_level_pct >= 0 ? '+' : '') + p.sell_level_pct.toFixed(3) + '%')}</b></div>
+    <div class="kv"><span>qty</span><b>${p.qty}</b></div>
+    <div class="tag" style="color:var(--faint);margin-top:2px">whole-position ratchet · a valid exit sells 100%</div>
+    ${p.scope_class === 'manual_out_of_envelope' ? '<div class="tag" style="color:var(--amber);margin-top:4px;font-weight:700">OUT OF VALIDATED SCOPE · ratchet behavior unvalidated · excluded from research metrics</div>' : ''}
+    ${degraded ? '<div class="tag" style="color:var(--blade);margin-top:4px">Ask and midpoint are ignored; the ratchet cannot evaluate an exit until a positive bid returns.</div>' : (paused ? '<div class="tag" style="color:var(--amber);margin-top:4px">Ratchet disengaged — no downside protection</div>' : '')}
+    <div class="kv c-fresh" style="margin-top:4px">${freshness(p.age)}</div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="danger" onclick="sellNow('${p.symbol}')">Sell now</button>
+      ${guardBtn}
+    </div>
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+      <input id="add-${cssId(p.symbol)}" type="number" min="1" max="500" step="1" value="1"
+        style="width:76px" ${p.execution_protected ? '' : 'disabled'}>
+      <button onclick="addToGuard('${p.symbol}')" ${p.execution_protected ? '' : 'disabled'}>Add contracts</button>
+      <span class="tag">explicit paper add</span>
+    </div>
+  </div>`;
+}
+
+async function addToGuard(sym) {
+  const input = document.getElementById('add-' + cssId(sym));
+  const qty = parseInt(input && input.value);
+  if (!qty || qty < 1) return showMsg('Add quantity must be a positive whole number.', true);
+  try {
+    const r = await fetch(`/api/positions/${encodeURIComponent(sym)}/add`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({qty}) });
+    const payload = await r.json();
+    if (!r.ok) throw new Error(payload.detail || `HTTP ${r.status}`);
+    showMsg(`Added ${qty} to ${sym}; Guard total is now ${payload.position.qty}.`, false);
+    lastSymbols = null; refresh(); refreshHoldings();
+  } catch (e) { showMsg('Add failed: ' + e.message, true); }
+}
+
+async function guardAction(sym, action, body=null) {
+  try {
+    const opts = { method:'POST' };
+    if (body) {
+      opts.headers = {'Content-Type':'application/json'};
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(`/api/positions/${encodeURIComponent(sym)}/${action}`, opts);
+    if (!r.ok) {
+      let msg = r.status;
+      try { const j = await r.json(); msg = (j.detail || j.message || r.status); } catch(e){}
+      alert(`Could not ${action} guard for ${sym}: ${msg}`);
+      return;
+    }
+  } catch (e) {
+    alert(`Could not ${action} guard for ${sym}: ${e}`);
+    return;
+  }
+  lastSymbols = null;   // force a full card rebuild so the button + state update
+  refresh();
+}
+async function pauseGuard(sym) { await guardAction(sym, 'pause'); }
+async function resumeGuard(sym) {
+  await guardAction(sym, 'resume', {
+    confirm_symbol: sym.toUpperCase(),
+    allow_automatic_sell: true,
+    request_id: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`)
+  });
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch('/api/state')).json();
+    const badge = $('modeBadge');
+    badge.textContent = s.mode.toUpperCase();
+    badge.className = 'badge ' + s.mode;
+    const feedTag = s.feed === 'SIP' ? '  ·  SIP feed (full market)' : '  ·  IEX feed (free)';
+    $('market').textContent = 'MARKET READ · ' + s.market + feedTag;
+    if (s.feed_error) {
+      let fe = document.getElementById('feedErr');
+      if (!fe) { fe = document.createElement('div');
+        fe.id = 'feedErr'; fe.style.cssText =
+        'color:var(--blade);font-size:12px;margin-top:6px';
+        $('market').after(fe); }
+      fe.textContent = '⚠ ' + s.feed_error;
+    } else {
+      const fe = document.getElementById('feedErr'); if (fe) fe.remove();
+    }
+    const safety = $('guardSafety');
+    const late = !s.guard_loop_healthy;
+    const exposed = s.unprotected_symbols || [];
+    if (late || exposed.length) {
+      safety.style.display = 'flex';
+      safety.className = 'banner red';
+      safety.querySelector('.lvl').textContent = 'GUARD SAFETY: UNPROTECTED';
+      safety.querySelector('.rzn').textContent = late
+        ? `Guard loop stale (${s.guard_loop_age_seconds == null ? 'not started' : s.guard_loop_age_seconds + 's'}). Do not rely on automatic exits.`
+        : `${exposed.join(', ')} lacks a current executable bid or is paused.`;
+    } else if (s.positions.length) {
+      safety.style.display = 'flex';
+      safety.className = 'banner green';
+      safety.querySelector('.lvl').textContent = 'GUARD SAFETY: PROTECTED';
+      safety.querySelector('.rzn').textContent = `Execution loop current; ${s.positions.length} position${s.positions.length === 1 ? '' : 's'} receiving executable bids.`;
+    } else {
+      safety.style.display = 'none';
+    }
+    // Sell sound: a guarded symbol present last poll but gone now means it exited
+    // (manual sell, liquidation, or the ratchet firing on its own).
+    const nowSet = new Set(s.positions.map(p => p.symbol));
+    if (prevGuardedSet) {
+      for (const sym of prevGuardedSet) if (!nowSet.has(sym)) playSell();
+    }
+    prevGuardedSet = nowSet;
+    // Rebuild the cards DOM only when the SET of guarded symbols (or paused state)
+    // changes; otherwise patch text in place to avoid flicker.
+    const symbols = s.positions.map(p => p.symbol + (p.paused ? ':P' : '') + ':' + p.quote_status).join(',');
+    if (symbols !== lastSymbols) {
+      $('cards').innerHTML = s.positions.length
+        ? s.positions.map(card).join('')
+        : '<div class="empty">Nothing guarded yet.</div>';
+      lastSymbols = symbols;
+    } else {
+      s.positions.forEach(updateCard);   // smooth in-place update, no flicker
+    }
+  } catch (e) { /* server restarting */ }
+}
+let prevGuardedSet = null;
+
+let lastSymbols = null;
+
+function updateCard(p) {
+  const el = document.getElementById('card-' + cssId(p.symbol));
+  if (!el) { lastSymbols = null; return; }   // force rebuild next tick
+  const paused = !!p.paused;
+  const degraded = p.quote_status !== 'OK';
+  const armed = !paused && !degraded && (p.tolerance <= 0.1 || p.peak >= 20);
+  el.className = 'card' + (armed ? ' armed' : '');
+  const cls = p.profit === null ? 'neg' : (p.profit >= 0 ? 'pos' : 'neg');
+  let hist = priceHist[p.symbol] || [];
+  if (p.last !== null) hist = (priceHist[p.symbol] = hist.concat(p.last).slice(-60));
+  const set = (sel, val) => { const n = el.querySelector(sel); if (n) n.innerHTML = val; };
+  set('.c-state', degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (armed ? 'RAZOR TIGHT' : 'GUARDING')));
+  el.querySelector('.c-state').style.color = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (armed ? 'var(--blade)' : 'var(--steel)'));
+  set('.c-big', p.profit === null ? 'UNAVAILABLE' : `${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(3)}%`);
+  el.querySelector('.c-big').className = 'big c-big ' + cls;
+  set('.c-spark', sparkline(hist));
+  set('.c-lastentry', `${p.last === null ? '—' : p.last.toFixed(4)} / ${p.entry.toFixed(4)}`);
+  set('.c-peak', `+${p.peak.toFixed(3)}%`);
+  set('.c-tol', `${p.tolerance}%`);
+  set('.c-sells', degraded ? 'unprotected — no executable bid' : (paused ? 'paused — no exits' : `${p.sell_level_pct >= 0 ? '+' : ''}${p.sell_level_pct.toFixed(3)}%`));
+  set('.c-fresh', freshness(p.age));
+}
+
+function shortSym(s) {   // SPY260728C00739000 -> "SPY 7/28 739C"
+  const m = s.match(/^([A-Z]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (!m) return s;
+  const k = parseInt(m[6]) / 1000;
+  return `${m[1]} ${+m[3]}/${+m[4]} ${k % 1 === 0 ? k : k.toFixed(1)}${m[5]}`;
+}
+function shortReason(txt) {   // compact exit tag; full text on hover
+  if (!txt) return { tag: '—', full: '' };
+  if (txt.startsWith('manual')) return { tag: 'manual', full: txt };
+  if (txt.startsWith('stall')) return { tag: 'stall', full: txt };
+  const m = txt.match(/tol (\d[\d.]*)%/);
+  return { tag: 'dip' + (m ? ' ' + m[1] + '%' : ''), full: txt };
+}
+function money(n) {
+  return (n >= 0 ? '+' : '−') + '$' + Math.abs(n).toLocaleString('en-US',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+let journalShowAll = false;
+const collapsedDays = new Set();
+function toggleShowAll() { journalShowAll = !journalShowAll; refreshJournal(); }
+function toggleDay(day) { collapsedDays.has(day) ? collapsedDays.delete(day) : collapsedDays.add(day); refreshJournal(); }
+function fmtDay(d) {
+  try { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
+  catch (e) { return d; }
+}
+function pnlOf(r) {
+  const e = parseFloat(r.entry), x = parseFloat(r.exit), q = parseFloat(r.qty) || 0;
+  const opt = r.symbol.length > 8 && /[CP]/.test(r.symbol);
+  return (x - e) * q * (opt ? 100 : 1);
+}
+async function refreshJournal() {
+  try {
+    const rows = await (await fetch('/api/journal')).json();
+    $('journalEmpty').style.display = rows.length ? 'none' : 'block';
+    $('journalToggle').style.display = rows.length ? '' : 'none';
+    if (!rows.length) { $('journal').innerHTML = ''; $('journalTotal').textContent = ''; return; }
+
+    // overall totals over ALL trades (not just the shown window)
+    let totalPnl = 0, wins = 0;
+    rows.forEach(r => { totalPnl += pnlOf(r); if (parseFloat(r.realized_pct) >= 0) wins++; });
+
+    const recent = rows.slice().reverse();               // most recent first
+    const shown = journalShowAll ? recent : recent.slice(0, 25);
+    $('journalToggle').textContent = journalShowAll ? 'Show last 25' : `Show all ${rows.length}`;
+
+    // group shown rows into day sections (preserving recent-first order)
+    const groups = [], idx = {};
+    shown.forEach(r => {
+      const day = (r.utc_time || '').slice(0, 10) || '—';
+      if (!(day in idx)) { idx[day] = groups.length; groups.push([day, []]); }
+      groups[idx[day]][1].push(r);
+    });
+
+    let html = `<tr><th>symbol / scope</th><th>entry</th><th>exit</th>
+      <th>peak</th><th>realized</th><th>P/L $</th><th>exit</th></tr>`;
+    for (const [day, drows] of groups) {
+      const dayPnl = drows.reduce((a, r) => a + pnlOf(r), 0);
+      const collapsed = collapsedDays.has(day);
+      html += `<tr class="dayhdr" onclick="toggleDay('${day}')"><td colspan="7">` +
+        `${collapsed ? '▸' : '▾'} ${fmtDay(day)} · ${drows.length} trades · ` +
+        `net <span class="${dayPnl >= 0 ? 'pos' : 'neg'}">${money(dayPnl)}</span></td></tr>`;
+      if (collapsed) continue;
+      for (const r of drows) {
+        const entry = parseFloat(r.entry), exit = parseFloat(r.exit), real = parseFloat(r.realized_pct);
+        const pnl = pnlOf(r), rz = shortReason(r.reason);
+        const scopeTag = r.scope_class === 'manual_out_of_envelope'
+          ? '<div class="tag" style="color:var(--amber)">manual · unvalidated</div>' : '';
+        html += `<tr><td title="${r.symbol}">${shortSym(r.symbol)}${scopeTag}</td>
+          <td>${entry.toFixed(2)}</td><td>${exit.toFixed(2)}</td>
+          <td style="color:var(--amber)">${parseFloat(r.peak_pct) >= 0 ? '+' : ''}${parseFloat(r.peak_pct).toFixed(1)}%</td>
+          <td class="${real >= 0 ? 'pos' : 'neg'}">${real >= 0 ? '+' : ''}${real.toFixed(1)}%</td>
+          <td class="${pnl >= 0 ? 'pos' : 'neg'}">${money(pnl)}</td>
+          <td style="text-align:left;color:var(--dim)" title="${rz.full}">${rz.tag}</td></tr>`;
+      }
+    }
+    $('journal').innerHTML = html;
+    const trunc = (!journalShowAll && rows.length > 25) ? ' (showing last 25)' : '';
+    $('journalTotal').innerHTML = `${rows.length} trades${trunc} · ${wins}W / ${rows.length - wins}L · ` +
+      `net <b class="${totalPnl >= 0 ? 'pos' : 'neg'}">${money(totalPnl)}</b>`;
+  } catch (e) {}
+}
+
+async function runPrecheck(){
+  const s=$('symbol').value.trim(); if(!s) return showMsg('Pick a symbol first.',true);
+  $('checkBtn').disabled=true; $('pcOut').innerHTML='Checking conditions...';
+  try{
+    const r=await fetch('/api/precheck?symbol='+encodeURIComponent(s)+'&type='+$('type').value);
+    if(!r.ok) throw new Error((await r.json()).detail);
+    const p=await r.json();
+    const esc=t=>{const d=document.createElement('div');d.textContent=t==null?'':String(t);return d.innerHTML;};
+    const w=p.weighted_read;
+    if(!w) throw new Error('weighted evidence read unavailable');
+    const decisionColor={YES:'var(--green)',NO:'var(--blade)','NO READ':'var(--amber)'}[w.decision]||'var(--dim)';
+    const agreement=w.agreement_pct==null?'':' — '+Math.round(w.agreement_pct)+'%';
+    const grp=(t,a,c)=>!a.length?'':'<div style="margin-top:8px"><b style="color:'+c+'">'+esc(t)+'</b>'+
+      a.map(x=>'<div style="margin-left:12px">'+esc(x.name)+' — '+esc(x.text)+'</div>').join('')+'</div>';
+    const horizon=(label,h)=>{
+      const color={YES:'var(--green)',NO:'var(--blade)','NO READ':'var(--amber)'}[h.decision]||'var(--dim)';
+      const pct=h.agreement_pct==null?'':' · '+Math.round(h.agreement_pct)+'% agreement';
+      return '<div class="tag" style="margin-top:4px"><b>'+esc(label)+'</b> '+
+        '<span style="color:'+color+';font-weight:700">'+esc(h.decision)+'</span>'+pct+
+        ' · '+Math.round(h.coverage_pct)+'% input coverage</div>';
+    };
+    const reasons=(w.reasons||[]).map(x=>'<div class="tag" style="color:var(--amber)">'+esc(x)+'</div>').join('');
+    const coherence=(w.coherence||[]).map(x=>'<div class="tag">'+esc(x.detail)+'</div>').join('');
+    const biases=(w.bias_notes||[]).map(x=>'<div class="tag"><b>'+esc(x.signal)+':</b> '+esc(x.note)+'</div>').join('');
+    const historical=await renderHistoricalFit(s);
+    $('pcOut').innerHTML=
+      '<div style="margin:8px 0 2px;color:var(--steel);font-weight:700;letter-spacing:.08em">'+
+        esc(p.direction.toUpperCase()+' '+p.symbol+'?')+'</div>'+
+      '<div style="font-size:32px;line-height:1.05;font-weight:900;color:'+decisionColor+'">'+
+        esc(w.decision)+agreement+'</div>'+
+      '<div class="tag" style="margin-top:6px">Weighted evidence agreement — not win probability · '+
+        Math.round(w.input_coverage_pct)+'% tactical input coverage</div>'+
+      '<details style="margin-top:10px;border-top:1px solid var(--edge);padding-top:8px">'+
+        '<summary style="cursor:pointer;color:var(--steel);font-weight:700">Why?</summary>'+
+        reasons+
+        horizon('Tactical',w.horizons.tactical)+
+        horizon('Structural',w.horizons.structural)+
+        horizon('Macro',w.horizons.macro)+
+        coherence+
+        grp('Supports your '+p.direction+' position:',p.supporting,'var(--green)')+
+        grp('Argues against it:',p.opposing,'var(--blade)')+
+        grp('Worth noting:',p.caution,'var(--amber)')+
+        grp('Neutral:',p.neutral,'var(--dim)')+
+        (p.unavailable.length?'<div class="tag" style="margin-top:8px">Unavailable: '+
+          p.unavailable.map(esc).join(', ')+'</div>':'')+
+        biases+
+        '<div class="tag" style="margin-top:8px;color:var(--faint)">'+esc(p.disclaimer)+'</div>'+
+        historical+
+      '</details>';
+  }catch(e){ $('pcOut').innerHTML='<span style="color:var(--blade)">Check failed: '+e.message+'</span>'; }
+  $('checkBtn').disabled=false;
+}
+
+async function runPremarket(){
+  const s=$('symbol').value.trim()||'SPY';
+  $('premktBtn').disabled=true; $('pmOut').innerHTML='Building assessment…';
+  try{
+    const r=await fetch('/api/premarket?symbol='+encodeURIComponent(s));
+    if(!r.ok) throw new Error((await r.json()).detail);
+    const p=await r.json();
+    const dirColor={bullish:'var(--green)',bearish:'var(--blade)',balanced:'var(--amber)',
+      trending:'var(--green)',mean_reverting:'var(--amber)',unstable:'var(--blade)',
+      confirming:'var(--green)',diverging:'var(--blade)',mixed:'var(--amber)',
+      good:'var(--green)',fair:'var(--amber)',poor:'var(--blade)',
+      restricted:'var(--blade)',provisional:'var(--amber)',
+      elevated:'var(--blade)',unknown:'var(--dim)'};
+    const chip=st=>'<span class="chip '+st+'">'+st+'</span>';
+    const esc=t=>{const d=document.createElement('div');d.textContent=t==null?'':String(t);return d.innerHTML;};
+    const row=(lab,c)=>{const col=dirColor[c.assessment]||'var(--text)';
+      return '<div class="pmrow"><span class="lab">'+lab+'</span>'+
+        '<span class="val" style="color:'+col+'">'+esc(c.assessment)+'</span>'+chip(c.status)+
+        '<span class="tag" style="margin-left:6px">'+esc(c.detail)+'</span></div>';};
+    const a=p.assessments;
+    const conf=p.data_confidence;
+    const confColor={high:'var(--green)',moderate:'var(--amber)',low:'var(--blade)','very low':'var(--blade)'}[conf.band];
+    const hdr=t=>'<div class="tag" style="margin-top:8px;color:var(--steel);letter-spacing:.06em">'+t+'</div>';
+    const readyColor=(p.blocking_condition||p.readiness.indexOf('insufficient')>=0)?'var(--amber)':
+      (p.readiness.indexOf('favorable')>=0?'var(--green)':'var(--amber)');
+    $('pmOut').innerHTML=
+      '<div style="font-weight:700;font-size:13px;margin-bottom:2px">'+esc(p.symbol)+' — premarket assessment'+
+        (p.gap?' <span class="tag">gap '+ (p.gap.pct>=0?'+':'')+p.gap.pct+'%</span>':'')+'</div>'+
+      hdr('BACKGROUND')+
+      row('Regime',a.regime)+row('Direction',a.direction)+row('Confirmation',a.confirmation)+
+      hdr('TRADE CONDITIONS')+
+      row('Entry quality',a.entry_quality)+row('Tradability',a.tradability)+row('Event risk',a.event_risk)+
+      '<div class="pmrow" style="border-top:1px solid var(--edge);margin-top:6px;padding-top:6px">'+
+        '<span class="lab">Data confidence</span><span class="val" style="color:'+confColor+'">'+
+        conf.band+' ('+Math.round(conf.score*100)+'%)</span></div>'+
+      '<div style="margin-top:8px;padding:8px;background:var(--bg);border:1px solid var(--edge);border-radius:6px">'+
+        '<div><b>Conclusion:</b> <span style="color:'+readyColor+';font-weight:700">'+
+          esc(p.readiness.replace(/_/g," ").toUpperCase())+'</span></div>'+
+        '<div class="pmrow"><span class="lab">Background</span><span>'+esc((p.background||"").replace(/_/g," "))+'</span></div>'+
+        (p.blocking_condition?'<div class="pmrow"><span class="lab">Blocking</span>'+
+          '<span style="color:var(--blade)">'+esc(p.blocking_condition.replace(/_/g," "))+'</span></div>':'')+
+        '<div class="tag" style="margin-top:4px">'+esc(p.readiness_text)+'</div></div>'+
+      '<div class="tag" style="margin-top:6px">Not available on this feed: '+
+        p.unavailable_capabilities.map(u=>esc(u.name)).join('; ')+'</div>'+
+      '<div class="tag" style="margin-top:4px;color:var(--faint)">policy '+esc(p.decision_policy.version)+
+        ' · '+esc(p.disclaimer)+'</div>';
+  }catch(e){ $('pmOut').innerHTML='<span style="color:var(--blade)">Assessment failed: '+e.message+'</span>'; }
+  $('premktBtn').disabled=false;
+  refreshBanners();
+}
+
+async function renderHistoricalFit(symbol){
+  const rule='border-top:1px solid var(--edge); margin-top:10px; padding-top:8px';
+  try{
+    const r=await fetch('/api/journal/score?symbol='+encodeURIComponent(symbol)+'&type='+$('type').value);
+    if(!r.ok) return '';
+    const sc=await r.json();
+    if(!sc.available){
+      return '<div style="'+rule+'"><b>Historical fit</b> '+
+        '<span class="tag">'+sc.n+'/'+sc.min+' trades</span>'+
+        '<div class="tag" style="margin-top:4px">'+sc.reason+'</div></div>';
+    }
+    const lc={favorable:'var(--green)',unfavorable:'var(--blade)',even:'var(--amber)'}[sc.lean];
+    const rows=sc.signals_used.map(u=>
+      '<div style="margin-left:12px" class="tag">'+u.signal+' '+u.direction+' — '+
+      u.historical_win_rate+'% win rate over '+u.n+' past trades</div>').join('');
+    return '<div style="'+rule+'">'+
+      '<b>Historical fit</b> <span style="color:'+lc+'; font-weight:700">'+sc.lean+'</span> '+
+      '<span class="tag">from '+sc.n+' '+ $('type').value +' trades, '+sc.wins+'W/'+sc.losses+'L, '+
+      sc.historical_win_rate+'% overall win rate</span>'+
+      rows+
+      '<div class="tag" style="margin-top:6px;color:var(--faint)">'+sc.disclaimer+'</div></div>';
+  }catch(e){ return ''; }
+}
+
+async function refreshStats() {
+  try {
+    const s = await (await fetch('/api/stats?mode=paper')).json();
+    if (!s.count) {
+      $('statsPanel').style.display = 'none';
+      $('statsEmpty').style.display = 'block';
+      $('statsEmpty').textContent = s.excluded_out_of_envelope
+        ? `No validated-scope completed trades in this view — ${s.excluded_out_of_envelope} manual out-of-envelope trade(s) are recorded in the journal but excluded from metrics.`
+        : 'No completed trades yet — stats appear once you\'ve closed some scalps.';
+      return;
+    }
+    $('statsEmpty').style.display = 'none';
+    $('statsPanel').style.display = 'block';
+    const pnlc = s.total_pnl >= 0 ? 'pos' : 'neg';
+    const card = (label, value, color) =>
+      `<div style="background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em">${label}</div>
+        <div style="font-size:18px;font-weight:700;${color ? 'color:' + color : ''}">${value}</div>
+      </div>`;
+    const money = n => (n >= 0 ? '+' : '−') + '$' + Math.abs(n).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    $('statCards').innerHTML =
+      card('trades', s.count) +
+      card('win rate', s.win_rate + '%', s.win_rate >= 50 ? 'var(--green)' : 'var(--amber)') +
+      card('wins / losses', `${s.wins} / ${s.losses}`) +
+      card('total P&L', money(s.total_pnl), s.total_pnl >= 0 ? 'var(--green)' : 'var(--blade)') +
+      card('avg win', '+' + s.avg_win_pct.toFixed(2) + '%', 'var(--green)') +
+      card('avg loss', s.avg_loss_pct.toFixed(2) + '%', 'var(--blade)') +
+      card('profit factor', s.profit_factor != null ? s.profit_factor : '—') +
+      card('avg peak', '+' + s.avg_peak_pct.toFixed(2) + '%', 'var(--amber)');
+    let bw = '';
+    if (s.best) bw += `Best: ${s.best.symbol} ${s.best.realized_pct >= 0 ? '+' : ''}${s.best.realized_pct.toFixed(2)}% (${money(s.best.pnl)})`;
+    if (s.worst) bw += `  ·  Worst: ${s.worst.symbol} ${s.worst.realized_pct.toFixed(2)}% (${money(s.worst.pnl)})`;
+    if (s.excluded_out_of_envelope) bw += `  ·  ${s.excluded_out_of_envelope} manual out-of-envelope trade(s) excluded`;
+    $('bestWorst').textContent = bw;
+  } catch (e) { /* server restarting */ }
+}
+
+async function refreshHoldings() {
+  try {
+    const { holdings } = await (await fetch('/api/holdings')).json();
+    $('holdingsEmpty').style.display = holdings.length ? 'none' : 'block';
+    $('liqAllBtn').style.display = holdings.length ? 'inline-block' : 'none';
+    if (!holdings.length) { $('holdings').innerHTML = ''; return; }
+    const head = `<tr><th>symbol</th><th>qty</th><th>avg entry</th><th>current</th>
+      <th>mkt value</th><th>P/L $</th><th>P/L %</th><th>guard status</th><th></th></tr>`;
+    $('holdings').innerHTML = head + holdings.map(h => {
+      const plc = h.pl_dollars >= 0 ? 'pos' : 'neg';
+      let guard;
+      if (h.ladder) {
+        const l = h.ladder;
+        const protectedNow = !!l.execution_protected;
+        const color = !protectedNow ? 'var(--blade)' : (l.armed ? 'var(--blade)' : 'var(--green)');
+        const tag = !protectedNow ? `UNPROTECTED · ${l.quote_status}` : (l.armed ? 'RAZOR TIGHT' : 'guarding');
+        guard = `<span style="color:${color};font-weight:700">${tag}</span>` +
+          `<div class="tag" style="margin-top:2px">peak +${l.peak.toFixed(2)}% · ` +
+          `tol ${l.tolerance}% · sells ${l.sell_level_pct >= 0 ? '+' : ''}${l.sell_level_pct.toFixed(2)}%</div>` +
+          (l.scope_class === 'manual_out_of_envelope'
+            ? '<div class="tag" style="color:var(--amber)">manual · ratchet unvalidated</div>' : '');
+      } else {
+        guard = `<span style="color:var(--dim)">— not guarded —</span>`;
+      }
+      return `<tr>
+        <td>${h.symbol}</td>
+        <td>${h.qty}</td>
+        <td>${h.avg_entry.toFixed(4)}</td>
+        <td>${h.current != null ? h.current.toFixed(4) : '—'}</td>
+        <td>${h.market_value != null ? '$' + h.market_value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+        <td class="${plc}">${h.pl_dollars >= 0 ? '+' : ''}$${Math.abs(h.pl_dollars).toFixed(2)}</td>
+        <td class="${plc}">${h.pl_percent >= 0 ? '+' : ''}${h.pl_percent.toFixed(2)}%</td>
+        <td style="text-align:left">${guard}</td>
+        <td><button class="danger" style="padding:5px 10px;font-size:11px"
+          onclick="liquidate('${h.symbol}')">Liquidate</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { /* server restarting */ }
+}
+
+async function liquidate(sym) {
+  try {
+    const r = await fetch(`/api/holdings/${encodeURIComponent(sym)}/liquidate`, { method:'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    showMsg(`Liquidating ${sym}…`, false);
+    refresh(); refreshHoldings();
+  } catch (e) { showMsg('Liquidate failed: ' + e.message, true); }
+}
+
+async function liquidateAll() {
+  try {
+    const r = await fetch('/api/holdings/liquidate-all', { method:'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    showMsg('Liquidating all positions…', false);
+    refresh(); refreshHoldings();
+  } catch (e) { showMsg('Liquidate-all failed: ' + e.message, true); }
+}
+
+async function refreshMicroRead() {
+  try {
+    const r = await (await fetch('/api/microread?symbol=SPY')).json();
+    const el = $('microRead');
+    if (!r.available) { el.textContent = `2-min read: ${r.reason}`; el.style.color = 'var(--faint)'; return; }
+    const lc = {up:'var(--green)', down:'var(--blade)', flat:'var(--dim)', choppy:'var(--dim)'}[r.lean];
+    const flow = r.flow_agrees_with_trend === true ? ', order flow agrees'
+               : r.flow_agrees_with_trend === false ? ', order flow diverges' : '';
+    el.innerHTML = `<span style="color:${lc};font-weight:700">2-min read: ${r.lean}</span> — ${r.why}${flow} ` +
+      `<span style="color:var(--faint)">(n=${r.n}, z=${r.z_score}) — descriptive, not a forecast</span>`;
+    el.style.color = '';
+  } catch (e) {}
+}
+
+function setBanner(id, level, lvlText, reason) {
+  const b = $(id); if (!b) return;
+  b.className = 'banner ' + level;
+  b.querySelector('.lvl').textContent = lvlText;
+  b.querySelector('.rzn').textContent = reason;
+}
+function stamp() {   // local HH:MM:SS
+  return new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+function stampTag(cadence) {
+  return `<span style="color:var(--faint);font-size:11px"> · updated ${stamp()} · refreshes ${cadence}</span>`;
+}
+function researchDiagnosticsOpen() {
+  const el = $('researchDiagnostics'); return !!(el && el.open);
+}
+function refreshResearchDiagnostics() {
+  if (!researchDiagnosticsOpen()) return;
+  refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation();
+}
+async function refreshBanners() {
+  if (!researchDiagnosticsOpen()) return;
+  // DATA CONFIDENCE — from the premarket scorecard's data-confidence score.
+  // GREEN = enough reliable evidence to EVALUATE (not "buy"). See TRADE READINESS.
+  try {
+    const p = await (await fetch('/api/premarket?symbol=SPY')).json();
+    const c = p.data_confidence || {}; const pct = Math.round((c.score || 0) * 100);
+    const band = c.band || 'very low';
+    let lvl = 'red', txt = 'INSUFFICIENT DATA', rzn = 'do not rely on this for entry timing';
+    if (band === 'high') { lvl = 'green'; txt = 'DATA SUFFICIENT'; rzn = 'required inputs available and timely'; }
+    else if (band === 'moderate') { lvl = 'yellow'; txt = 'DEGRADED'; rzn = 'some inputs missing or stale — treat as context only'; }
+    setBanner('dataBanner', lvl, `DATA CONFIDENCE: ${txt} — ${pct}%`, rzn);
+    $('dataBanner').querySelector('.rzn').innerHTML = rzn + stampTag('each minute');
+  } catch (e) {}
+  // TRADE READINESS — SIP is observed, but entry-policy-v1 is not yet frozen or
+  // qualified out-of-sample, so this stays RED. GREEN DATA ≠ GREEN TRADE.
+  setBanner('tradeBanner', 'red', 'TRADE READINESS: NO QUALIFIED POLICY',
+    'Exploratory entry logic is not eligible for approval. Formal entry-policy-v1 requires a frozen policy and out-of-sample SIP qualification. GREEN DATA ≠ GREEN TRADE.');
+}
+
+// EXPLORATORY read (prototype v0) — own poll at 15s (minute-bar driven), so a
+// fresh bar shows promptly. Clearly not an approval.
+async function refreshEntryRead() {
+  if (!researchDiagnosticsOpen()) return;
+  try {
+    const e = await (await fetch('/api/entry/assess?symbol=SPY')).json();
+    const col = {LONG_CANDIDATE:'var(--green)',SHORT_CANDIDATE:'var(--blade)',WAIT:'var(--amber)',NO_TRADE:'var(--dim)'}[e.decision] || 'var(--dim)';
+    const g = e.trade_geometry;
+    const geomTxt = g ? ` · entry ${g.entry} / stop ${g.invalidation} / target ${g.target} · R:R ${g.reward_risk}` : '';
+    const miss = (e.missing_inputs && e.missing_inputs.length) ? ` · missing: ${e.missing_inputs.join(', ')}` : '';
+    $('entryRead').innerHTML =
+      `<b style="color:var(--steel)">EXPLORATORY read (${e.policy_version}, non-qualifying):</b> ` +
+      `<span style="color:${col};font-weight:700">${e.decision.replace(/_/g,' ')}</span> — ${e.reason.replace(/_/g,' ')}` +
+      `<span style="color:var(--faint)"> · formal readiness: NO TRADE${geomTxt}${miss}</span>` +
+      stampTag('every 15s');
+  } catch (err) { $('entryRead').innerHTML = 'exploratory read unavailable' + stampTag('every 15s'); }
+}
+
+async function refreshDirectionalShadow() {
+  if (!researchDiagnosticsOpen()) return;
+  const el = $('directionalShadow');
+  try {
+    const response = await fetch('/api/directional-shadow?symbol=SPY');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const d = await response.json();
+    const p = d.current || {}; const lim = d.limits || {}; const c = p.proposed_contract;
+    const decision = p.decision || 'NO_TRADE';
+    const col = {CALL:'var(--green)',PUT:'var(--blade)',NO_TRADE:'var(--dim)'}[decision] || 'var(--dim)';
+    const pick = c ? ` · proposed ${c.symbol} · ${c.proposed_quantity} contract · est. $${Number(c.estimated_entry_cost_usd||0).toFixed(2)}`
+                   : ` · ${(p.blocking_reasons||[]).join(', ').replace(/_/g,' ') || 'no eligible contract'}`;
+    const counts=d.counts||{};
+    el.innerHTML = `<b style="color:var(--steel)">AUTOMATED DIRECTIONAL SHADOW (${d.version})</b> · `+
+      `<b style="color:${col}">${decision.replace(/_/g,' ')}</b>${pick}<br>`+
+      `<span style="color:var(--faint)">NO BROKER ORDERS · SPY only · max ${lim.max_contracts_per_entry} contract/entry · `+
+      `${lim.max_entries_per_day} entries/day · $${lim.max_premium_per_entry_usd}/entry · `+
+      `climb ${lim.climb_add_contracts} × ${lim.climb_max_adds} max · samples CALL ${counts.CALL||0} / PUT ${counts.PUT||0} / NO TRADE ${counts.NO_TRADE||0}</span>`+
+      stampTag('every 15s');
+  } catch (e) {
+    el.textContent='AUTOMATED DIRECTIONAL SHADOW · staged; activates after the next safe server restart';
+  }
+}
+
+function explanationLine(parent, text, color) {
+  const line = document.createElement('div');
+  line.textContent = text;
+  if (color) line.style.color = color;
+  parent.appendChild(line);
+}
+
+async function refreshExplanation() {
+  if (!researchDiagnosticsOpen()) return;
+  const status = $('explanationStatus');
+  const rendered = $('explanationRendered');
+  const raw = $('explanationBrief');
+  try {
+    const response = await fetch('/api/explanation?symbol=SPY');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    const explanation = payload.explanation || {};
+    const brief = payload.raw_brief_display || payload.brief || {};
+    status.textContent = `${explanation.provider_state || 'DETERMINISTIC'} · external model calls: ${explanation.outbound_model_calls || 0} · brief ${String(explanation.input_brief_hash || '').slice(0, 12)} · updated ${stamp()}`;
+
+    rendered.replaceChildren();
+    const sectionLabels = {
+      data_quality: 'DATA QUALITY', mechanical: 'MECHANICAL EVIDENCE',
+      missing_or_advisory: 'MISSING / ADVISORY', system_output: 'SYSTEM OUTPUT',
+      reading_note: 'READING NOTE'
+    };
+    const sections = explanation.rendered_sections || {};
+    Object.keys(sectionLabels).forEach(name => {
+      const lines = sections[name] || [];
+      if (!lines.length) return;
+      const heading = document.createElement('div');
+      heading.textContent = sectionLabels[name];
+      heading.style.cssText = 'margin-top:6px;color:var(--dim);font-weight:700';
+      rendered.appendChild(heading);
+      lines.forEach(text => explanationLine(rendered, `• ${text}`));
+    });
+    if (explanation.stale_output_discarded) {
+      explanationLine(rendered, 'A late explanation was discarded because its brief was no longer current.', 'var(--amber)');
+    }
+
+    // The raw deterministic facts remain visible beside the prose.  textContent
+    // is deliberate: even display-only free text cannot become executable HTML.
+    raw.replaceChildren();
+    (brief.facts || []).forEach(fact => {
+      const state = fact.state ? `[${fact.state}] ` : '';
+      const value = fact.value == null ? 'unknown' : String(fact.value);
+      explanationLine(raw, `${state}${fact.fact_id} = ${value}`,
+        fact.state && fact.state !== 'FRESH' ? 'var(--amber)' : '');
+    });
+  } catch (error) {
+    status.textContent = 'Evidence explanation unavailable; deterministic research panels remain unchanged.';
+    rendered.replaceChildren(); raw.replaceChildren();
+  }
+}
+
+async function refreshExploSummary() {
+  const details = $('exploratorySummaryDetails');
+  if (!details || !details.open) return;
+  // Subordinate operational panel. NEUTRAL colors only — no green for positive
+  // exploratory P&L during early sessions; this is NOT a "strategy works" panel.
+  try {
+    const s = await (await fetch('/api/entry/summary?symbol=SPY')).json();
+    const c = s.counts || {}; const co = s.candidate_outcomes || {};
+    const m = s.median_return_60m_by_decision || {};
+    const pct = v => (v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%');
+    const cand = (c.LONG_CANDIDATE || 0) + (c.SHORT_CANDIDATE || 0);
+    const dim = 'var(--dim)', txt = 'var(--text)';
+    $('exploSummary').innerHTML =
+      `<div style="font-family:'Space Grotesk',sans-serif;letter-spacing:.05em;color:var(--steel)">${(s.policy_version||'').toUpperCase()}</div>` +
+      `<div><b>Formal cohort eligible:</b> <span style="color:var(--blade);font-weight:700">NO</span>` +
+      ` &nbsp;·&nbsp; <b>Evaluation status:</b> operational only` +
+      ` &nbsp;·&nbsp; <b>Promotable to entry-policy-v1:</b> <span style="color:var(--blade)">NO</span></div>` +
+      `<div style="margin-top:6px"><b>Sessions observed:</b> ${s.sessions||0} &nbsp;·&nbsp; ` +
+      `<b>Decisions logged:</b> ${s.decision_samples||0} &nbsp;·&nbsp; ` +
+      `Candidates: ${cand} &nbsp;·&nbsp; WAIT: ${c.WAIT||0} &nbsp;·&nbsp; NO&nbsp;TRADE: ${c.NO_TRADE||0}</div>` +
+      `<div style="margin-top:6px"><b>Candidate outcomes:</b> ` +
+      `target first ${co.target_first||0} &nbsp;·&nbsp; stop first ${co.stop_first||0} &nbsp;·&nbsp; ` +
+      `<span style="color:var(--amber)">ambiguous same-bar ${co.ambiguous_same_bar||0}</span> &nbsp;·&nbsp; ` +
+      `no hit ${co.no_hit||0} &nbsp;·&nbsp; <span style="color:var(--amber)">incomplete/excluded ${co.incomplete||0}</span></div>` +
+      `<div style="margin-top:6px;color:${txt}"><b>Median 60m return</b> (neutral, not P&L): ` +
+      `candidates ${pct(m.LONG_CANDIDATE!=null?m.LONG_CANDIDATE:m.SHORT_CANDIDATE)} &nbsp;·&nbsp; ` +
+      `WAIT ${pct(m.WAIT)} &nbsp;·&nbsp; NO&nbsp;TRADE ${pct(m.NO_TRADE)}</div>` +
+      `<div style="margin-top:4px;color:${txt}"><b>Median MFE / MAE (candidates):</b> ${pct(s.candidate_median_mfe)} / ${pct(s.candidate_median_mae)}</div>` +
+      `<div style="margin-top:4px"><b>Modeled costs:</b> NOT YET IMPLEMENTED (placeholder) &nbsp;·&nbsp; <b>Stage:</b> ${s.stage||''}</div>` +
+      `<div class="tag" style="margin-top:6px;color:var(--faint)">Interpretation: machinery validation only — decision logging, outcome attachment, and obvious logic/data failures. NOT a claim that the strategy works. Unqualified historical results cannot be promoted into entry-policy-v1.${stampTag('each minute')}</div>`;
+  } catch (e) { $('exploSummary').textContent = 'exploratory summary unavailable'; }
+}
+
+refresh(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
+if (location.protocol === 'file:') {
+  showMsg('This page is opened as a file — the API cannot work this way. Run "python scalp_server.py" and open http://localhost:8420 instead.', true);
+} else {
+  fetch('/api/state').then(r => { if (!r.ok) throw 0; return r.json(); })
+    .catch(() => showMsg('No Scalp API at this address. Run "python scalp_server.py" and open http://localhost:8420.', true));
+}
+// Schedule the next refresh only after the prior one finishes. setInterval can
+// stack duplicate requests when Alpaca or a file-backed endpoint is slow.
+function scheduleRefresh(fn, cadenceMs) {
+  let timer = null;
+  const run = async () => {
+    try { await fn(); }
+    finally { timer = setTimeout(run, cadenceMs); }
+  };
+  timer = setTimeout(run, cadenceMs);
+  return () => clearTimeout(timer);
+}
+scheduleRefresh(refresh, 500);
+scheduleRefresh(refreshJournal, 10000);
+scheduleRefresh(refreshHoldings, 3000);
+scheduleRefresh(refreshStats, 10000);
+scheduleRefresh(refreshMicroRead, 15000);
+scheduleRefresh(refreshBanners, 60000);   // premarket is cached ~60s server-side
+scheduleRefresh(refreshEntryRead, 15000); // minute-bar driven; caught within ~15s
+scheduleRefresh(refreshDirectionalShadow, 15000);
+scheduleRefresh(refreshExplanation, 15000);
+scheduleRefresh(refreshExploSummary, 60000);
+</script>
+<!-- Wave Riding shadow panel: additive, read-only, hidden unless the feature
+     flag is on. Self-contained; does not touch Standard-mode controls. -->
+<div id="wavePanel" style="display:none;margin-top:16px;padding:12px;border:1px solid #444;border-radius:8px">
+  <div style="font-weight:600">WAVE RIDING — SHADOW SIMULATION
+    <span style="opacity:.6;font-size:.8em">No live orders will be submitted</span></div>
+  <div id="waveExposure" style="font-size:.8em;opacity:.7;margin:4px 0"></div>
+  <div id="waveCohort" style="font-size:.82em;margin:6px 0;padding:6px 8px;border:1px dashed #555;border-radius:6px"></div>
+  <div style="margin:6px 0;font-size:.85em">
+    <span style="opacity:.7">Pick a contract:</span>
+    <input id="waveFind" placeholder="cached Workup ticker" value="SPY" size="9"
+           aria-label="Wave shadow ticker">
+    <button onclick="waveLoad()">Load contracts</button>
+    <select id="waveContracts" onchange="wavePick()" style="max-width:420px"><option value="">— load a ticker first —</option></select>
+    <span style="opacity:.55">(equities/ETFs plus native SPX index values; cached Workup required · shadow only)</span>
+  </div>
+  <div style="margin:6px 0;font-size:.85em">
+    <input id="waveU" placeholder="underlying" value="SPY" size="10" readonly>
+    <input id="waveC" placeholder="option contract symbol" size="22">
+    <select id="waveD"><option value="CALL">CALL</option><option value="PUT">PUT</option></select>
+    <button id="waveStartBtn" onclick="waveStart()">Start simulation</button>
+    <span id="waveStartMsg" style="opacity:.75"></span>
+  </div>
+  <div id="waveBody" style="font-size:.85em;opacity:.9;margin-top:6px"></div>
+</div>
+<script>
+const waveUnsupportedIndexes = new Set(['NDX','NDXP','RUT','VIX']);
+let waveIndexBlock = '';
+async function waveLoad(){
+  const t=document.getElementById('waveFind').value.trim().toUpperCase();
+  const sel=document.getElementById('waveContracts');
+  document.getElementById('waveU').value='';
+  document.getElementById('waveC').value='';
+  document.getElementById('waveStartMsg').textContent='';
+  document.getElementById('waveStartBtn').disabled=false;
+  waveIndexBlock='';
+  if(!t){ sel.innerHTML='<option value="">type a ticker first</option>'; return; }
+  if(waveUnsupportedIndexes.has(t)){
+    sel.innerHTML='<option value="">'+t+' index values are not configured for Wave; use Workup for index evidence</option>';
+    return;
+  }
+  sel.innerHTML='<option value="">loading '+t+'…</option>';
+  try{
+    if(t==='SPX' || t==='SPXW'){
+      // A plan/entitlement change can happen while Scalpr is running. Force this
+      // user-initiated check past the short dashboard cache so the result is live.
+      const cap=await (await fetch('/api/wave/index-capability?refresh=true')).json();
+      if(!cap.available){
+        waveIndexBlock=(cap.reason_code==='ALPACA_INDEX_VALUES_GRANT_MISSING' ||
+                        String(cap.error||'').toLowerCase().includes('insufficient grants'))
+          ? 'SPX research only — Alpaca Index Values grant is missing; Trader Plus SIP/OPRA does not satisfy this separate endpoint.'
+          : 'SPX research only — native index data is unavailable.';
+        document.getElementById('waveStartBtn').disabled=true;
+        document.getElementById('waveStartMsg').textContent=waveIndexBlock+' Contracts can still be reviewed below.';
+      } else {
+        document.getElementById('waveStartMsg').textContent=
+          `SPX native index feed ready · ${cap.session_minute_bars} session minute bars · sampled TWAP`;
+      }
+    }
+    const d=await (await fetch('/api/wave/contracts/'+t)).json();
+    if(!d.contracts || !d.contracts.length){
+      sel.innerHTML='<option value="">'+((d.note)||(d.error)||('no eligible contracts for '+t))+'</option>'; return; }
+    sel.innerHTML='<option value="">— pick a '+t+' contract (🟢★ = cleanest quotes) —</option>'+d.contracts.map(c=>{
+      const star=c.clean?'🟢★ ':'   ';
+      const lbl=`${star}${c.strike}${c.type} exp ${c.expiry} · spr ${c.spread_pct}% · OI ${c.oi} · vol ${c.volume} · Δ${c.delta}`;
+      return `<option value="${c.symbol}|${c.type}|${t}">${lbl}</option>`; }).join('');
+  }catch(e){ sel.innerHTML='<option value="">error loading</option>'; }
+}
+function wavePick(){
+  const v=document.getElementById('waveContracts').value; if(!v) return;
+  const parts=v.split('|');
+  document.getElementById('waveU').value=parts[2];
+  document.getElementById('waveC').value=parts[0];
+  document.getElementById('waveD').value=(parts[1]==='P'?'PUT':'CALL');
+  document.getElementById('waveStartMsg').textContent=waveIndexBlock||'ready — click Start simulation';
+}
+async function waveStart(){
+  if(waveIndexBlock){ document.getElementById('waveStartMsg').textContent=waveIndexBlock; return; }
+  const spec={underlying_symbol:document.getElementById('waveU').value.trim().toUpperCase(),
+              option_contract_symbol:document.getElementById('waveC').value.trim().toUpperCase(),
+              direction:document.getElementById('waveD').value};
+  const msg=document.getElementById('waveStartMsg'); msg.textContent='…';
+  try{ const r=await fetch('/api/wave/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)});
+       const d=await r.json();
+       msg.textContent = d.created ? ('started ('+(d.seed_hash||'').slice(0,8)+')')
+                                   : ('blocked: '+((d.blocking_reason||[d.error]).join(', ')));
+       refreshWave();
+  }catch(e){ msg.textContent='error'; }
+}
+async function waveCtl(pid,action){
+  try{ await fetch('/api/wave/control',{method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({position_id:pid,action})}); refreshWave(); }catch(e){}
+}
+async function refreshWave(){
+  try{
+    const r = await fetch('/api/wave/status'); const d = await r.json();
+    const panel = document.getElementById('wavePanel');
+    if(!d || !d.enabled){ panel.style.display='none'; return; }
+    panel.style.display='block';
+    const wc = d.worst_case_exposure||{};
+    document.getElementById('waveExposure').textContent =
+      `Shadow-only, Standard mode unaffected. Worst-case exposure: `+
+      `${wc.max_total_contracts} contracts / $${wc.estimated_max_total_cost_usd} / risk $${wc.max_configured_risk_usd}.`;
+    try{
+      const cr = await (await fetch('/api/wave/cohort')).json();
+      if(cr && cr.enabled){
+        const g=(n,t)=>`${n} / ${t}`+(n>=t?' ✓':'');
+        document.getElementById('waveCohort').innerHTML =
+          `<b>Cohort A</b> <span style="opacity:.6">(${cr.cohort_id})</span> — accumulating`+
+          (cr.cohort_complete?' · <b style="color:#6c6">GATES MET</b>':'')+'<br>'+
+          `completed simulations: <b>${g(cr.completed_simulations,cr.target_simulations)}</b> · `+
+          `sessions: <b>${g(cr.sessions,cr.target_sessions)}</b> · `+
+          `CALL: <b>${g(cr.calls,cr.target_calls)}</b> · PUT: <b>${g(cr.puts,cr.target_puts)}</b> · `+
+          `underlyings: <b>${g(cr.symbols,cr.target_symbols)}</b><br>`+
+          `<span style="opacity:.65">configuration hash: ${String(cr.config_hash).slice(0,12)}…</span>`;
+      } else { document.getElementById('waveCohort').textContent=''; }
+    }catch(e){ document.getElementById('waveCohort').textContent=''; }
+    let h='';
+    if((d.positions||[]).length){
+      h += '<table style="font-size:.9em"><tr><th>state</th><th>contract</th><th>dir</th>'+
+           '<th>qty</th><th>adds</th><th>avg</th><th>ATR</th><th>exec$</th><th>peak$</th>'+
+           '<th>giveback%</th><th></th></tr>';
+      for(const p of d.positions){
+        h += `<tr><td>${p.state}</td><td style="font-size:.85em">${p.source_position_id?'↪ ':''}${p.position_id||''}</td>`+
+             `<td>${p.direction}</td><td>${p.open_quantity}</td>`+
+             `<td>${p.filled_adds}/${p.max_adds}</td><td>${p.weighted_average_option_cost??'—'}</td>`+
+             `<td>${p.frozen_wave_atr??'—'}</td><td>${p.current_executable_value_usd??'—'}</td>`+
+             `<td>${p.peak_executable_value_usd??'—'}</td><td>${p.effective_giveback_pct??'—'}</td>`+
+             `<td><button onclick="waveCtl('${p.position_id}','pause')">⏸</button>`+
+             `<button onclick="waveCtl('${p.position_id}','resume')">▶</button>`+
+             `<button onclick="waveCtl('${p.position_id}','stop')">⏹</button></td></tr>`;
+      }
+      h += '</table>';
+    } else { h += '<div style="opacity:.6;margin-top:4px">No active simulated Wave Riding position.</div>'; }
+    document.getElementById('waveBody').innerHTML = h;
+  }catch(e){ /* Wave Riding is optional; stay silent on error */ }
+}
+refreshWave(); scheduleRefresh(refreshWave, 10000);
+</script>
+<!-- Options-Flow Evidence ranking (read-only, evidence-only, no probability). -->
+<div id="flowPanel" style="display:none;margin-top:16px;padding:12px;border:1px solid #444;border-radius:8px">
+  <div style="font-weight:600">OPTIONS-FLOW EVIDENCE
+    <span style="opacity:.6;font-size:.8em">🟢 aligned + fresh · 🟠 mixed/partial · evidence only, NOT a buy signal</span></div>
+  <div id="flowBody" style="font-size:.85em;opacity:.9;margin-top:6px"></div>
+</div>
+<script>
+async function refreshFlow(){
+  try{
+    const d = await (await fetch('/api/flow/ranking')).json();
+    const panel = document.getElementById('flowPanel');
+    if(!d || !d.ranking || !d.ranking.length){ panel.style.display='none'; return; }
+    panel.style.display='block';
+    let h = '<table style="font-size:.9em"><tr><th></th><th>ticker</th><th>tier</th>'+
+            '<th>direction</th><th>agree</th><th>contracts</th><th>fresh</th></tr>';
+    for(const s of d.ranking){
+      const dirColor = s.direction==='BULLISH'?'#6c6':(s.direction==='BEARISH'?'#e66':'#bbb');
+      h += `<tr><td style="font-size:1.1em">${s.star||'·'}</td>`+
+           `<td><b>${s.ticker}</b></td><td>${s.tier}</td>`+
+           `<td style="color:${dirColor}">${s.direction}</td>`+
+           `<td>${s.agreeing_signals}</td><td>${s.band_contracts}</td>`+
+           `<td>${s.fresh?'yes':'<span style="opacity:.5">stale</span>'}</td></tr>`;
+    }
+    h += '</table><div style="opacity:.55;margin-top:4px">'+
+         'Options flow only (equity order flow / internals / news not on feed). '+
+         'GREEN DATA ≠ GREEN TRADE. Pull a fresh workup for a ticker to update it.</div>';
+    document.getElementById('flowBody').innerHTML = h;
+  }catch(e){ /* optional; stay silent */ }
+}
+refreshFlow(); scheduleRefresh(refreshFlow, 30000);
+</script>
+</body>
+</html>

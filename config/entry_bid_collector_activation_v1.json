@@ -1,0 +1,104 @@
+{
+  "schema_version": "entry-bid-collector-activation-v1",
+  "recorded_at_utc": "2026-08-07T00:50:57Z",
+  "approval_scope": "collector thresholds and pre-lock executable-bid capture only",
+  "activation_mode": "PAPER_SHADOW_ONLY",
+  "collection_role": "PRELOCK_DRY_RUN",
+  "formal_cohort_eligible": false,
+  "cohorts_locked": false,
+  "stage1_deployment": {
+    "status": "ACTIVE_AWAITING_RTH_VALIDATION",
+    "controlled_restart_at_utc": "2026-08-07T00:50:02Z",
+    "paper_holdings_count": 0,
+    "collector_enabled": true,
+    "collector_state": "ARMED_MARKET_CLOSED",
+    "market_window": false,
+    "full_session_acceptance": "PENDING_MARKET_CLOSED",
+    "cohort_unlock_check": "PASS",
+    "read_only_import_graph": "PASS",
+    "broker_orders_submitted_by_collector": 0,
+    "guard_access": false,
+    "execution_authority": false,
+    "disk_free_percent": 11.83,
+    "stage2_disk_headroom_gate": "BLOCKED_NOT_COMFORTABLE"
+  },
+  "pending_contract_data_fix": {
+    "status": "BUILT_TESTED_AWAITING_CONTROLLED_PREOPEN_RESTART",
+    "recorded_at_utc": "2026-08-07T19:01:51Z",
+    "running_server_changed": false,
+    "running_runtime_config_version": "entry-intelligence-config-v1.1.0",
+    "candidate_config_version": "entry-intelligence-config-v1.2.0",
+    "candidate_config_hash": "d773f5cf60820d421dc9be8d875467add8554fb6065d275e4839e63e84cb0e1c",
+    "contract_assembly_version": "entry-contract-assembly-v2",
+    "contract_assembly_hash": "a7c6d8f73042bd15196730266566d9c43d310e5bb7e677c46537e6803cb03fa6",
+    "contract_selection_version": "entry-execution-contract-selection-v2",
+    "contract_selection_hash": "d5595bea96368484e3dd0c8cb0ff49668f9a96b7f3f275685fa006009a55a8cb",
+    "candidate_draft_hashes": {
+      "low_reversal_v1": "f51b4a4a9c40f8a207ee4bc7f07d7ef9058e5a5d363d3b1735f1fe1b2fb7adfb",
+      "high_reversal_v1": "ad0134e63898a71c879bb01a656a762752421c7d0b00765c8fc115c7409ce9ee"
+    },
+    "offline_replay": {
+      "session_date": "2026-08-07",
+      "episode_count": 10,
+      "manifest_integrity": "PASS",
+      "delta_volume_oi_repair": "PASS",
+      "point_in_time_quote_replay": "UNRECOVERABLE_LEGACY_EVIDENCE_GAP",
+      "acceptance_status": "PASS_WITH_EXPLICIT_LEGACY_QUOTE_LIMITATION",
+      "report_path": "outputs/contract_data_fix_replay_2026-08-07.json",
+      "report_sha256": "4b081f17c09a01c849076aa5d9422420938d9f12e1eed6c3de8f30244888f509"
+    },
+    "verification": {
+      "entry_intelligence_tests": "PASS",
+      "repository_test_scripts_passed": 33,
+      "repository_test_scripts_failed": 0,
+      "read_only_import_graph": "PASS",
+      "thresholds_unchanged": true,
+      "cohorts_locked": false
+    },
+    "deployment_gate": "DO_NOT_RESTART_DURING_RTH; USE NEXT CONTROLLED PREOPEN WINDOW"
+  },
+  "cost_model_status": "IMPLEMENTED_RESEARCH_MODEL",
+  "feature_flag": "ENTRY_INTEL_BID_CAPTURE_ENABLED",
+  "enabled_default": false,
+  "config_version": "entry-intelligence-config-v1.1.0",
+  "config_hash": "9b7a5abe0b07f2a95a073fe90ba9f1e55fb6d6383724edeb378b5840b411cb88",
+  "draft_hashes": {
+    "low_reversal_v1": "5c873bf5dfab88fe93e2d008eb20b81e6d06c0f861367136e4b5cdfa09a96518",
+    "high_reversal_v1": "d566311f20f8fb4e687cf295b10db6d7550aaea226d815a046fdce6f63cf9f3b"
+  },
+  "implementation_hashes": {
+    "entry_intelligence_v1.py": "9b7874f9d7ee701ea93d38243876a03a7bda3326acd2e46c6d82c0bd6715dd0f",
+    "entry_bid_capture_v1.py": "28cdedafc14d8f4e8e50619b14288c1964d4de4ba0501efc7542d266c1889916",
+    "entry_episode_research_v1.py": "c48ab240ff4fa92934b3cb24e6f8d30a25cc7f1d8239b6ec078a6d5abd54d42a",
+    "decision_replay_v1.py": "e27cc6266115d6f3fa865a1b49af121864edc1aedb517551e86019225f48fca2",
+    "entry_bid_collector_v1.py": "d5207a75a6aeaf4919d2f4b2c15ea2ebcc59049c93f3712454b1d2bda92d53ed",
+    "scalpr_config.py": "967a07a4eed2ab1dd82efdedad59b37b3c7e46199a4d64376d66579851971f43",
+    "config/scalpr.yaml": "82a145a3bb6cdc04b32c7cd43f4e8305f3d42dec6eb60a9f65bb82bfd06c3584",
+    "scalp_server.py": "7cf26fc191c7893c8dad078a1f064001abe07d6b8361247ec8e068038c3ea537",
+    "restart.sh": "0b252565fdbd337a59cc5184277077722f2784a30e5b2ec9a96fbb919fe08510"
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "entry_intelligence_tests": "PASS",
+    "default_off_zero_capture_test": "PASS",
+    "enabled_market_closed_arming_test": "PASS",
+    "fresh_opra_snapshot_selection_test": "PASS",
+    "real_cost_model_sensitivity_test": "PASS",
+    "shared_trade_rejection_admission_test": "PASS",
+    "typed_gate_result_test": "PASS",
+    "evidence_manifest_hash_verification_test": "PASS",
+    "bounded_replay_persistence_test": "PASS",
+    "hypothetical_store_isolation_test": "PASS",
+    "read_only_source_scan": "PASS",
+    "repository_test_scripts_passed": 33,
+    "repository_test_scripts_failed": 0
+  },
+  "read_only_invariants": {
+    "broker_client_import": false,
+    "order_request_import": false,
+    "submit_order_call": false,
+    "scalp_server_import": false,
+    "guard_access": false,
+    "execution_authority": false
+  }
+}

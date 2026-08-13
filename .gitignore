@@ -1,0 +1,75 @@
+# === SECRETS — never commit ===
+scalp.keys
+*.keys
+*.key
+*.pem
+.env
+*.env
+env.sh
+secrets*
+*secret*
+*token*
+*.credentials
+
+# === Python ===
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# === Logs & runtime ===
+*.log
+scalpr_server*.log
+scalpr_autorestart.log
+
+# === OS / editor ===
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# === Large append-only capture data (optional: back up separately, not in git) ===
+# Comment these out if you decide to version the research record instead.
+entry_intelligence_*.jsonl
+guard_events_v0.jsonl
+runtime_health_v1.jsonl
+wave_*_v0.jsonl
+directional_shadow_v0.jsonl
+v2_data/
+runs/
+incubation_trades/
+incubation_snapshots/
+incubation_telemetry/
+wave_positions/
+wave_obs_streams/
+wave_seeds/
+premarket_shadow/
+
+# live sqlite runtime (server writes these; they race with git add)
+scalpr_state.db
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# dev tooling / environment cruft (never versioned)
+.tools/
+.downloads/
+.cache/
+.config/
+
+# data / output dirs (evidence, not code)
+incubation_paths/
+tick_logs/
+research_snapshots/
+outputs/
+
+# all jsonl are append-only evidence data, never code
+*.jsonl
+
+# csv data / logs / journals (evidence, not code)
+*.csv

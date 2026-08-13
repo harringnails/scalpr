@@ -1,0 +1,20 @@
+{
+  "version": "institutional-flow-config-v1",
+  "institutional_flow": {
+    "enabled": true,
+    "provider": "unusual_whales",
+    "polling_interval_seconds": 60,
+    "request_timeout_seconds": 3,
+    "max_retries": 2,
+    "dedupe_ttl_seconds": 3600,
+    "stale_after_seconds": 30,
+    "unavailable_after_seconds": 90,
+    "large_trade_premium_threshold": 100000,
+    "extreme_trade_premium_threshold": 1000000,
+    "rolling_windows_minutes": [1, 5, 15, 30],
+    "required_for_live_entry": false,
+    "required_for_high_confidence_entry": true,
+    "raw_retention_days": 7,
+    "normalized_retention_days": 90
+  }
+}

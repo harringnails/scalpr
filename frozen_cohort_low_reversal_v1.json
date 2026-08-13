@@ -1,0 +1,134 @@
+{
+  "document_status": "DRAFT_NOT_LOCKED",
+  "operator_confirmed": false,
+  "operator_confirmation": null,
+  "draft_hash": "f51b4a4a9c40f8a207ee4bc7f07d7ef9058e5a5d363d3b1735f1fe1b2fb7adfb",
+  "unconfirmed_fields": [
+    "target_session"
+  ],
+  "proposed": {
+    "cohort_id": "low_reversal_v1",
+    "cohort_version": "entry-intelligence-cohort-v1-draft",
+    "setup_type": "intraday_bullish_reversal_from_low",
+    "side": "CALL",
+    "mode": "PAPER_SHADOW_ONLY",
+    "target_session": null,
+    "scope": {
+      "symbols": ["SPY"],
+      "instrument": "options",
+      "dte_min": 0,
+      "dte_max": 2,
+      "decision_evaluation_cadence": "each_RTH_minute",
+      "trigger_inputs": "completed_5min_RTH_bars_only"
+    },
+    "direction_rules": {
+      "rules_version": "entry-reversal-rules-v1-draft",
+      "bar_timeframe_minutes": 5,
+      "atr_method": "simple_mean_true_range",
+      "atr_period": 14,
+      "rsi_method": "Wilder",
+      "rsi_period": 14,
+      "rsi_threshold": 35.0,
+      "extension_lookback_bars": 12,
+      "extension_atr_multiple": 1.5,
+      "level_proximity_pct": 0.15,
+      "round_number_increment": 1.0,
+      "level_set": ["prior_day_low", "premarket_low", "nearest_whole_dollar_at_or_below"],
+      "momentum_slowing": "both latest completed bars close below open and latest range is smaller than prior range OR prior Wilder RSI14 < 35 and current RSI14 > prior RSI14",
+      "higher_low_confirmation": "previous completed 5m low > preceding completed 5m low AND decision bar close > previous bar high",
+      "reclaim_confirmation": "previous completed close <= level and decision close > level for a registered level or causal session VWAP",
+      "all_groups_required": ["atr_extension", "level_proximity", "momentum_slowing", "causal_confirmation"]
+    },
+    "execution": {
+      "quote_source": "alpaca_options_latest_quote:opra",
+      "quote_must_be_two_sided": true,
+      "max_quote_age_seconds": 5.0,
+      "max_spread_pct": 6.0,
+      "spread_formula": "(ask-bid)/((ask+bid)/2)*100",
+      "min_contract_volume": 200,
+      "min_open_interest": 500,
+      "delta_target": 0.45,
+      "delta_min": 0.40,
+      "delta_max": 0.50,
+      "max_ask_price": 5.00,
+      "max_ask_price_units": "USD_per_option_share_equals_500_USD_per_contract",
+      "contract_selection_order": ["nearest_absolute_delta_to_target", "lowest_spread_pct", "highest_open_interest", "lexical_option_symbol"]
+    },
+    "episode": {
+      "episode_version": "entry-reversal-episode-v1",
+      "first_qualifying_decision_only": true,
+      "dedupe_fields": ["cohort_id", "symbol", "side", "session_date", "reference_extreme_5m_bucket", "reference_level"],
+      "outcome_horizon_minutes": 60,
+      "cooldown_minutes": 60,
+      "overlapping_outcomes_allowed": false,
+      "min_independent_candidates": 200
+    },
+    "outcome": {
+      "label_version": "entry-intelligence-executable-bid-outcome-v1",
+      "entry_fill": "fresh_executable_ask",
+      "path": "fresh_executable_bid_ticks_only",
+      "option_risk_fraction": 0.20,
+      "stop_bid_formula": "entry_ask*(1-option_risk_fraction)",
+      "reward_risk": 1.5,
+      "target_bid_formula": "entry_ask+reward_risk*(entry_ask-stop_bid)",
+      "bid_poll_interval_seconds": 5.0,
+      "max_fresh_gap_seconds": 15.0,
+      "minimum_coverage_fraction": 0.80,
+      "missing_or_stale_bid_rule": "record_unavailable_and_never_impute_or_carry_forward",
+      "same_timestamp_collision_rule": "STOP_FIRST",
+      "return_horizons_minutes": [5, 15, 30, 60],
+      "cost_model_status": "IMPLEMENTED_RESEARCH_MODEL",
+      "cost_model": {
+        "cost_model_version": "entry-intel-cost-model-v1",
+        "return_convention": "decimal_fraction",
+        "commission_per_contract_usd": 0.00,
+        "regulatory_fees_round_trip_per_contract_usd": 0.12,
+        "regulatory_itemization_usd": {"taf_sell": 0.00329, "orf_per_side": 0.02295, "occ_per_side": 0.025, "cat": 0.0, "sec_section31_sell_est": 0.005, "actual_round_trip_est": 0.104},
+        "slippage_ticks_per_side_primary": 1,
+        "slippage_sensitivity_ticks_per_side": [0, 1, 2],
+        "robustness_rule": "edge must survive 2 ticks/side",
+        "tick_size_usd_per_share": 0.01,
+        "tick_note": "SPY options penny increments regardless of price",
+        "negative_proceeds_floor": "exit_effective = max(0, exit_bid - slippage_per_side)",
+        "spread_handling": "already_captured_by_ask_entry_bid_exit_do_not_readd",
+        "abstain_baseline_net_return": 0.0,
+        "engine_implementation_required": false
+      },
+      "net_return_after_realistic_costs": "computed_per_outcome_at_0_1_2_ticks_per_side"
+    },
+    "research": {
+      "primary_metric": "mean_incremental_executable_bid_return_vs_explicit_abstain_zero_after_realistic_costs",
+      "controlling_null": "entry-episode-session-block-sign-null-v1",
+      "finite_sample_plus_one": true,
+      "block_sessions": 5,
+      "requires_untouched_walk_forward": true,
+      "no_best_claim_until_all_gates_pass": true
+    },
+    "evidence_availability": {
+      "technical": "REQUIRED",
+      "execution": "REQUIRED",
+      "unusual_whales": "UNAVAILABLE_NOT_NEUTRAL",
+      "ivolatility": "UNAVAILABLE_NOT_NEUTRAL"
+    },
+    "historical_pilot": {
+      "observations": 13,
+      "label_basis": "delta_gamma_proxy",
+      "included_in_this_cohort": false,
+      "exclusion_reason": "predates prospective lock and uses incompatible proxy labels"
+    },
+    "implementation_hashes": {
+      "rules_hash": "01691fb5dca55afe3834b6b97665294b39888cf676956fa5604149cc23396e1a",
+      "decision_packet_engine_hash": "2403b27f3c182cb9795b0a76f9d0da617d8a46d95b1b1739b7d8b2296906d79f",
+      "bid_capture_hash": "28cdedafc14d8f4e8e50619b14288c1964d4de4ba0501efc7542d266c1889916",
+      "outcome_engine_hash": "28cdedafc14d8f4e8e50619b14288c1964d4de4ba0501efc7542d266c1889916",
+      "episode_engine_hash": "c48ab240ff4fa92934b3cb24e6f8d30a25cc7f1d8239b6ec078a6d5abd54d42a",
+      "decision_replay_hash": "e27cc6266115d6f3fa865a1b49af121864edc1aedb517551e86019225f48fca2",
+      "collector_hash": "5da9535e7577ffdb5b7944481d3f3383176e946bc88a9b944ff5f40e27ddf5f5",
+      "contract_assembly_engine_hash": "b5d789c853862032d0a68f45bc13d7de3b6f8d7461c2741c484a3a1eaf27a17e",
+      "contract_assembly_hash": "a7c6d8f73042bd15196730266566d9c43d310e5bb7e677c46537e6803cb03fa6",
+      "contract_selection_hash": "d5595bea96368484e3dd0c8cb0ff49668f9a96b7f3f275685fa006009a55a8cb",
+      "config_hash": "d773f5cf60820d421dc9be8d875467add8554fb6065d275e4839e63e84cb0e1c",
+      "config_file_sha256": "f9d4a7bf8a17f67a71211a6d1b4ce847b1438e84e4cd0a1ae67f289ae757c40b"
+    }
+  }
+}

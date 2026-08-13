@@ -1,0 +1,27 @@
+{
+  "stage": "P",
+  "option_symbol": "SPY260811C00560000",
+  "ivol_csv": "ivol_SPY_560C_2026-08-11_m1.csv",
+  "ivol_timestamp_tz": "America/New_York",
+  "reference_kind": "alpaca_csv",
+  "reference_path": "alpaca_SPY_560C_2026-08-11_quotes.csv",
+  "reference_timestamp_tz": "UTC",
+  "tick_size": 0.01,
+  "thresholds": {
+    "max_median_abs_diff_ticks": 1.0,
+    "max_median_signed_bias_ticks": 0.5,
+    "min_compared_minutes": 20,
+    "min_usable_minute_fraction": 0.90
+  },
+  "resolution_instances": [
+    {
+      "id": "example_reversal_1",
+      "entry_ask": 1.22,
+      "target_bid": 1.53,
+      "stop_bid": 0.98,
+      "start": "2026-08-11T13:35:00+00:00",
+      "horizon_minutes": 60,
+      "tz": "UTC"
+    }
+  ]
+}

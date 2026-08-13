@@ -1,0 +1,135 @@
+{
+  "schema_version": "scalpr-config-v1",
+  "entry_intelligence_v1": {
+    "config_version": "entry-intelligence-config-v1.2.0",
+    "mode": "PAPER_SHADOW_ONLY",
+    "feature_flag": "ENTRY_INTEL_BID_CAPTURE_ENABLED",
+    "enabled_default": false,
+    "formal_cohort_eligible": false,
+    "collection_role": "PRELOCK_DRY_RUN",
+    "symbol": "SPY",
+    "universe": {
+      "source": "unusual_whales_workup_cache_refreshed_daily",
+      "dte_min": 0,
+      "dte_max": 2,
+      "refresh_after_et": "09:15",
+      "refresh_retry_seconds": 900,
+      "budget_usd": 2500.0
+    },
+    "direction": {
+      "shared": {
+        "bar_timeframe_minutes": 5,
+        "atr_method": "simple_mean_true_range",
+        "atr_period": 14,
+        "rsi_method": "Wilder",
+        "rsi_period": 14,
+        "extension_lookback_bars": 12,
+        "extension_atr_multiple": 1.5,
+        "level_proximity_pct": 0.15,
+        "round_number_increment": 1.0
+      },
+      "CALL": {
+        "rsi_threshold": 35.0,
+        "level_set": ["prior_day_low", "premarket_low", "nearest_whole_dollar_at_or_below"]
+      },
+      "PUT": {
+        "rsi_threshold": 65.0,
+        "level_set": ["prior_day_high", "premarket_high", "nearest_whole_dollar_at_or_above"]
+      }
+    },
+    "execution": {
+      "quote_source": "alpaca_options_latest_quote:opra",
+      "max_quote_age_seconds": 5.0,
+      "max_spread_pct": 6.0,
+      "min_contract_volume": 200,
+      "min_open_interest": 500,
+      "delta_target": 0.45,
+      "delta_min": 0.40,
+      "delta_max": 0.50,
+      "max_ask_price": 5.00,
+      "dte_min": 0,
+      "dte_max": 2
+    },
+    "contract_assembly": {
+      "contract_assembly_version": "entry-contract-assembly-v2",
+      "join_key": "OCC_OPTION_SYMBOL",
+      "field_sources": {
+        "bid_ask_quote_timestamp": "alpaca_opra_latest_quote",
+        "volume_open_interest_iv": "unusual_whales_option_chain",
+        "delta_priority": ["alpaca_snapshot_greeks", "local_black_scholes"],
+        "contract_metadata": "occ_option_symbol"
+      },
+      "max_quote_age_seconds": 5.0,
+      "chain_freshness_rule": "same_market_session_and_observed_at_lte_decided_at",
+      "snapshot_volume_policy": "ignore_always_zero_or_missing_is_not_observed_volume",
+      "local_bs": {
+        "annual_rate": 0.043,
+        "expiry_time_et": "16:00",
+        "day_count": 365.0,
+        "min_iv": 0.01,
+        "max_iv": 5.0,
+        "max_underlying_age_seconds": 120.0
+      }
+    },
+    "episode": {
+      "episode_version": "entry-reversal-episode-v1",
+      "outcome_horizon_minutes": 60,
+      "cooldown_minutes": 60,
+      "overlapping_outcomes_allowed": false
+    },
+    "outcome": {
+      "label_version": "entry-intelligence-executable-bid-outcome-v1",
+      "option_risk_fraction": 0.20,
+      "reward_risk": 1.5,
+      "bid_poll_interval_seconds": 5.0,
+      "max_fresh_gap_seconds": 15.0,
+      "minimum_coverage_fraction": 0.80,
+      "return_horizons_minutes": [5, 15, 30, 60],
+      "cost_model_status": "IMPLEMENTED_RESEARCH_MODEL",
+      "cost_model": {
+        "cost_model_version": "entry-intel-cost-model-v1",
+        "return_convention": "decimal_fraction",
+        "commission_per_contract_usd": 0.00,
+        "regulatory_fees_round_trip_per_contract_usd": 0.12,
+        "regulatory_itemization_usd": {
+          "taf_sell": 0.00329,
+          "orf_per_side": 0.02295,
+          "occ_per_side": 0.025,
+          "cat": 0.0,
+          "sec_section31_sell_est": 0.005,
+          "actual_round_trip_est": 0.104
+        },
+        "slippage_ticks_per_side_primary": 1,
+        "slippage_sensitivity_ticks_per_side": [0, 1, 2],
+        "robustness_rule": "edge must survive 2 ticks/side",
+        "tick_size_usd_per_share": 0.01,
+        "tick_note": "SPY options penny increments regardless of price",
+        "negative_proceeds_floor": "exit_effective = max(0, exit_bid - slippage_per_side)",
+        "spread_handling": "already_captured_by_ask_entry_bid_exit_do_not_readd",
+        "abstain_baseline_net_return": 0.0,
+        "engine_implementation_required": false
+      }
+    },
+    "collector": {
+      "decision_cadence_seconds": 60,
+      "status_log": "entry_intelligence_collector_status_v1.json",
+      "decision_log": "entry_intelligence_decisions_v1.jsonl",
+      "episode_log": "entry_intelligence_episodes_v1.jsonl",
+      "bid_log": "entry_intelligence_bid_ticks_v1.jsonl",
+      "outcome_log": "entry_intelligence_outcomes_v1.jsonl",
+      "gate_result_log": "entry_intelligence_gate_results_v1.jsonl",
+      "evidence_source_log": "entry_intelligence_evidence_sources_v1.jsonl",
+      "evidence_manifest_log": "entry_intelligence_evidence_manifests_v1.jsonl",
+      "decision_event_log": "entry_intelligence_decision_events_v1.jsonl",
+      "no_trade_plan_log": "entry_intelligence_no_trade_plans_v1.jsonl",
+      "no_trade_bid_log": "entry_intelligence_hypothetical_bid_ticks_v1.jsonl",
+      "no_trade_outcome_log": "entry_intelligence_hypothetical_outcomes_v1.jsonl",
+      "replay_queue_max_pending": 256
+    },
+    "operator_approval": {
+      "approved": true,
+      "approved_at_utc": "2026-08-06T02:42:06Z",
+      "scope": "collector thresholds and capture only; no cohort lock or result claim"
+    }
+  }
+}

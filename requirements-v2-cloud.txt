@@ -1,0 +1,5 @@
+# Cloud SQL PostgreSQL connector runtime. Install only inside .venv.
+cloud-sql-python-connector[pg8000]>=1.18,<2
+SQLAlchemy>=2.0,<3
+certifi>=2026.7.22
+truststore>=0.10,<1
