@@ -666,7 +666,7 @@ def test_collector_refreshes_snapshot_before_contract_selection():
             os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = old_flag
 
 
-def test_collector_admits_before_poll_and_splits_real_from_hypothetical():
+def test_collector_admits_only_qualified_reversal_before_poll():
     call_setup = ei.evaluate_reversal_setup(
         symbol="SPY", side="CALL", minute_bars=minute_bars("CALL"), now_minute=80,
         context={"prior_day_low": 91.3, "premarket_low": 90.0,
@@ -716,14 +716,16 @@ def test_collector_admits_before_poll_and_splits_real_from_hypothetical():
             service.replay_writer.flush()
             decisions = list(fe._iter_jsonl(service.decision_path))
             assert {row["decision"] for row in decisions} == {"NO_TRADE", "PUT"}
+            admitted = [row for row in fe._iter_jsonl(service.episode_path) if row["admitted"]]
+            assert [row["side"] for row in admitted] == ["PUT"]
             assert len(list(fe._iter_jsonl(service.evidence_manifest_path))) == 2
             assert len(list(fe._iter_jsonl(service.decision_event_path))) == 2
             assert len(list(fe._iter_jsonl(service.gate_result_path))) == 10
             plans = list(fe._iter_jsonl(service.no_trade_plan_path))
-            assert len(plans) == 1 and plans[0]["status"] == "TRACKABLE"
-            assert len(service.active_hypothetical) == 1
+            assert plans == []
+            assert len(service.active_hypothetical) == 0
             assert len(service.active) == 1
-            assert service.no_trade_bid_path.exists()
+            assert not service.no_trade_bid_path.exists()
             assert service.bid_path.exists()
             service.replay_writer.close()
     finally:

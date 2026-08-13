@@ -23,33 +23,39 @@ MVP is **not** "a profitable strategy" and **not** "go live." Given the evidence
 
 ## Phase 0 — Finish the good state (housekeeping)
 
-- [ ] Complete the git baseline commit on the Mac (repo initialized, `.gitignore` protects secrets); push/copy off-machine. **Done =** committed + backed up externally.
-- [ ] Verify then `rm scalp.keys` (creds load from Keychain now). **Done =** no plaintext key on disk.
+- [x] Complete the git baseline commit on the Mac (repo initialized, `.gitignore` protects secrets); push/copy off-machine. **Done =** committed + backed up externally.
+- [x] Verify then `rm scalp.keys` (creds load from Keychain now). **Done =** no plaintext key on disk.
 
 ## Phase 1 — Downside protection: Guard asymmetric hard stop (highest ROI, no edge assumption)
 
 Spec finalized: `GUARD_ASYMMETRIC_HARD_STOP_SPEC_2026-08-12.md`.
 
-- [ ] **Honest replay characterization.** Pick the stop level as a *risk decision* first; run it over the 239-trade journal **once**; report **both** tail-loss reduction and winners-clipped / spurious-stop rate. No level sweeping on the same journal. **Done =** replay report showing both sides.
-- [ ] **Decide** whether to wire it in and at what level (pre-committed). **Done =** go/no-go + chosen level.
-- [ ] **Implement as a separate Guard path** (config-gated, paper only): loss cap with 2-fresh-tick confirmation; degradation exit at 10–15s of no fresh two-sided mark; asymmetric trail computing peak + giveback on fresh confirmed marks only; distinct journaled exit reason; not bypassed by pause/resume. **Done =** code + tests (whipsaw, degradation, confirmation).
+- [x] **Honest replay characterization.** Pick the stop level as a *risk decision* first; run it over the 239-trade journal **once**; report **both** tail-loss reduction and winners-clipped / spurious-stop rate. No level sweeping on the same journal. **Done =** replay report showing both sides.
+- [x] **Decide** whether to wire it in and at what level (pre-committed). **Done =** go/no-go + chosen level.
+- [x] **Implement as a separate Guard path** (config-gated, paper only): loss cap with 2-fresh-tick confirmation; degradation exit at 10–15s of no fresh two-sided mark; asymmetric trail computing peak + giveback on fresh confirmed marks only; distinct journaled exit reason; not bypassed by pause/resume. **Done =** code + tests (whipsaw, degradation, confirmation).
 - [ ] **Verify in paper** over a few sessions: fires on real losers, no whipsaw on quote noise, no spurious winner-clipping. **Done =** paper confirmation.
 
 ## Phase 2 — Clean the evidence pools (discipline)
 
-- [ ] Formally scope and label the four pools — manual Guard, wave shadow, incubation, entry-intelligence — as **separate** evidence, never one edge story; no cross-pool pooling in any analysis. **Done =** each pool's scope/purpose documented and enforced.
+Scope doc: `EVIDENCE_POOLS_DISCIPLINE.md`.
+
+- [x] Formally scope and label the four pools — manual Guard, wave shadow, incubation, entry-intelligence — as **separate** evidence, never one edge story; no cross-pool pooling in any analysis. **Done =** each pool's scope/purpose documented and enforced.
 
 ## Phase 3 — Labelable outcome basis (A2)
 
 Stage A closed as **A2**: the single-option executable-bid basis is not reliably viable (`STAGE_A_OUTCOME_BASIS_VIABILITY.md`).
+Pre-reg spec: `A2_OUTCOME_BASIS_SPEC.md`.
 
-- [ ] **Pre-register the A2 alternative outcome basis.** Recommendation: **underlying-forward-return** over greeks-mapped (0DTE gamma/theta make the greeks map inaccurate on exactly the big moves). **Done =** frozen A2 basis spec with bias controls.
-- [ ] **Build/validate the A2 measurement** — reuse the existing `entry_policy_prototype` `return_5m/15m/30m/60m` + MFE/MAE machinery. **Done =** a labelable outcome pipeline independent of single-option quote density.
+- [x] **Pre-register the A2 alternative outcome basis.** Recommendation: **underlying-forward-return** over greeks-mapped (0DTE gamma/theta make the greeks map inaccurate on exactly the big moves). **Done =** frozen A2 basis spec with bias controls.
+- [ ] **Build/validate the A2 measurement** — `a2_measurement.py` now produces signed 5/15/30/60-minute labels from provider-time, two-sided SPY quote mids, preserving endpoint timestamps, source provenance, missingness, and one-observation-per-episode-key. The prior completed-minute-bar prototype is not used for primary A2 labels because it cannot preserve intraminute point-in-time boundaries. The strict local replay finds 10/26 fully labelable records, but all 26 legacy records are 13 co-timed CALL/PUT pairs caused by a now-fixed admission bug. They are ineligible for inference. Phase 4 remains blocked by the 200-episode gate, the collision preflight, and `A2_HISTORICAL_VALIDITY_DETERMINATION.md`.
 
 ## Phase 4 — The MVP question: does any signal have edge?
 
-- [ ] **Run the cheap directional-edge test.** Does the reversal setup (frozen, as-is) predict the underlying's forward move on the A2 basis, against a **session-block matched null + walk-forward**? **Done =** honest edge / no-edge verdict.
+- Edge-test spec: `REVERSAL_PHASE4_EDGE_TEST_SPEC.md`.
+
+- [ ] **Run the cheap directional-edge test.** Does the reversal setup (frozen, as-is) predict the underlying's forward move on the A2 basis, against a **session-block matched null + 4-fold chronological walk-forward**? **Done =** honest EDGE / NO EDGE / UNDERPOWERED verdict.
 - [ ] **Branch on the result:**
+  - **UNDERPOWERED / INCONCLUSIVE** → collect more episodes until the 200-episode validity gate is satisfied; do not call no-edge yet.
   - **No edge** → a real result. Pivot effort to the denser-signal order-flow studies (dealer pressure / CVD), not more reversal variants.
   - **Edge** → proceed to reversal v2 direction (new frozen cohort, *smallest* relaxation of `momentum_slowing` / `causal_confirmation`), liquidity-first contract selection, and cost-adjusted expectancy — per `REVERSAL_V2_DESIGN_BRIEF.md`.
 

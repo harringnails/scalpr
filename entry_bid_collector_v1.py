@@ -23,7 +23,7 @@ import feature_engine as fe
 import scalpr_config
 
 
-COLLECTOR_VERSION = "entry-bid-collector-v1.1"
+COLLECTOR_VERSION = "entry-bid-collector-v1.2"
 ROOT = Path(__file__).resolve().parent
 LOW_COHORT = ROOT / "frozen_cohort_low_reversal_v1.json"
 HIGH_COHORT = ROOT / "frozen_cohort_high_reversal_v1.json"
@@ -456,11 +456,12 @@ class EntryBidCollector:
                 config_version=self.config["config_version"],
                 config_hash=self.config["config_hash"])
             admission = None
-            has_reference = (
+            has_qualified_reversal = (
                 setup.get("status") == "FRESH"
+                and bool(setup.get("qualified"))
                 and setup.get("reference_extreme_bucket") is not None
             )
-            if has_reference:
+            if has_qualified_reversal:
                 candidate = {
                     "config_version": self.config["config_version"],
                     "config_hash": self.config["config_hash"],
@@ -496,8 +497,8 @@ class EntryBidCollector:
             else:
                 selection = {
                     "selected": None, "rejected": [], "eligible_count": 0,
-                    "source_status": str(setup.get("status") or "MISSING"),
-                    "reason": "execution_not_evaluated_no_reversal_reference",
+                    "source_status": "UNAVAILABLE",
+                    "reason": "execution_not_evaluated_direction_not_qualified",
                 }
             packet = intelligence.build_decision_packet(
                 cohort_document=self.cohorts[side], setup=setup,
