@@ -75,7 +75,7 @@ export ENTRY_INTEL_BID_CAPTURE_ENABLED=1
 # No OpenAI/Claude credential is loaded or required by this server lifecycle.
 export EXPLAIN_LAYER_ENABLED=0
 
-echo "Starting Scalpr server with Alpaca SIP… (keep this window open; Ctrl+C stops it)"
+echo "Starting Scalpr server with Alpaca SIP in the background…"
 echo "Wave Riding shadow observer: ON (Cohort A)"
 echo "Entry Incubation shadow observer: ON (Cohort A)"
 echo "Unusual Whales shadow capture: ON (session only, 60s cadence)"
@@ -108,4 +108,41 @@ if [ -x ".venv/bin/python" ] && [ -f "v2_data/cloudsql_profile.json" ]; then
 else
   echo "Cloud SQL evidence mirror: OFF (optional runtime or profile missing)"
 fi
-python3 scalp_server.py --sip
+ROOT_DIR=$(pwd -P)
+LOG_DIR="$ROOT_DIR/v2_data"
+SERVER_LOG="$LOG_DIR/scalpr_server.log"
+SERVER_ERROR_LOG="$LOG_DIR/scalpr_server.error.log"
+PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+mkdir -p "$LOG_DIR"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+  echo "REFUSING startup: project Python runtime is missing at $PYTHON_BIN."
+  exit 1
+fi
+
+# The study collector must not depend on an interactive Terminal remaining open.
+# It is intentionally launched by Terminal, which has the macOS privacy grant
+# for the protected Documents folder. The inherited Keychain-only credentials
+# remain in this process tree and are never written to disk.
+/usr/bin/nohup "$PYTHON_BIN" scalp_server.py --sip \
+  >>"$SERVER_LOG" 2>>"$SERVER_ERROR_LOG" < /dev/null &
+SERVER_PID=$!
+echo "Scalpr server launch requested (pid $SERVER_PID)."
+
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if lsof -tiTCP:8420 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Scalpr PAPER server is listening on http://127.0.0.1:8420."
+    echo "Server log: $SERVER_LOG"
+    exit 0
+  fi
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "Scalpr server exited during startup. Recent error output:"
+    tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "Scalpr server did not open port 8420 within 10 seconds. Recent error output:"
+tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
+exit 1

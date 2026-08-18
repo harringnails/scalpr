@@ -12,6 +12,8 @@ Verifies the Phase-1 discipline, not profitability:
 
 Run: python3 test_feature_engine.py   (no external deps; sources degrade)
 """
+from unittest.mock import patch
+
 import feature_engine as fe
 
 
@@ -39,7 +41,8 @@ def test_schema_and_stub_honesty():
              "spread_pct": 4.0, "mid": 0.80, "gamma": 0.0, "oi_since_prev": None},
         ],
     }
-    fr = fe.build_feature_record(None, "AMD", workup_payload=payload)
+    with patch("regime_model.regime_read", return_value={"available": False}):
+        fr = fe.build_feature_record(None, "AMD", workup_payload=payload)
     check("schema_version tagged", fr["schema_version"] == "scalpr-intel-v0")
     check("formal_cohort_eligible False", fr["formal_cohort_eligible"] is False)
     # unwired fields are explicit None, and named in _unwired

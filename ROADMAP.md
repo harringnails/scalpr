@@ -62,3 +62,9 @@ Exit: deterministic calculations and risk remain independent; AI never submits o
 - Freeze a paper cohort before tuning.
 
 Exit: approved paper-only cutover with rollback artifacts. Live use remains out of scope.
+
+## Slow-path technical debt
+
+- The legacy `/api/regime` HMM endpoint can exceed 45 seconds on a cold read.
+  It is not on the Guard, Entry Intelligence, or runner critical paths; keep it
+  descriptive-only and move it to a bounded background cache before broader use.

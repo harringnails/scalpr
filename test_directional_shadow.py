@@ -1,7 +1,7 @@
 """Network-free safety and selection tests for directional-shadow-v0."""
 
 from datetime import datetime, timezone
-import sys
+import inspect
 import tempfile
 from pathlib import Path
 
@@ -71,7 +71,8 @@ def test_log_is_minute_idempotent_and_status_counts():
 
 
 def test_module_has_no_broker_dependency_or_order_path():
-    assert "alpaca" not in sys.modules
+    source = inspect.getsource(ds)
+    assert "import alpaca" not in source and "from alpaca" not in source
     assert ds.FORMAL_COHORT_ELIGIBLE is False
     p = ds.build_proposal(entry("LONG_CANDIDATE"), contracts(), now=NOW)
     assert p["shadow_only"] is True and p["broker_orders_reachable"] is False

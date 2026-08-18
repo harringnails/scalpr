@@ -3,21 +3,21 @@
   "active_hypothetical_decisions": 0,
   "cohorts_locked": false,
   "collection_role": "PRELOCK_DRY_RUN",
-  "collector_version": "entry-bid-collector-v1.1",
+  "collector_version": "entry-bid-collector-v1.2",
   "config_hash": "d773f5cf60820d421dc9be8d875467add8554fb6065d275e4839e63e84cb0e1c",
   "config_version": "entry-intelligence-config-v1.2.0",
   "cost_model_status": "IMPLEMENTED_RESEARCH_MODEL",
   "counters": {
-    "admitted_episodes": 14,
-    "bid_records": 670,
-    "decision_events": 1376,
-    "decision_packets": 1376,
-    "evidence_manifests": 1376,
-    "gate_results": 6880,
-    "hypothetical_bid_records": 795,
-    "hypothetical_outcome_records": 1848,
-    "no_trade_plans": 13,
-    "outcome_records": 670
+    "admitted_episodes": 1,
+    "bid_records": 0,
+    "decision_events": 746,
+    "decision_packets": 746,
+    "evidence_manifests": 746,
+    "gate_results": 3730,
+    "hypothetical_bid_records": 0,
+    "hypothetical_outcome_records": 0,
+    "no_trade_plans": 1,
+    "outcome_records": 0
   },
   "detail": null,
   "enabled": true,
@@ -29,7 +29,7 @@
   "schema_version": "entry-bid-collector-status-v1",
   "state": "ARMED_MARKET_CLOSED",
   "symbol": "SPY",
-  "universe_as_of": "2026-08-12T08:15:02",
+  "universe_as_of": "2026-08-18T08:15:06",
   "universe_error": null,
-  "updated_at": "2026-08-13T00:06:01.483903+00:00"
+  "updated_at": "2026-08-18T21:25:02.871366+00:00"
 }

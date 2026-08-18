@@ -7,6 +7,8 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 from types import SimpleNamespace
 
 import entry_bid_capture_v1 as bids
@@ -379,6 +381,7 @@ def test_episode_admission_blocks_duplicate_and_overlap():
          "decided_at": (NOW + timedelta(minutes=30)).isoformat()},
         existing=[first], outcome_horizon_minutes=60, cooldown_minutes=60)
     assert first["admitted"] is True
+    assert "regime_tag" in first
     assert duplicate["rejection_reason"] == "DUPLICATE_REVERSAL_REFERENCE"
     assert overlap["rejection_reason"] == "OVERLAPPING_OUTCOME_OR_COOLDOWN"
     assert first["config_version"] == "test" and first["config_hash"] == "hash"
@@ -718,6 +721,8 @@ def test_collector_admits_only_qualified_reversal_before_poll():
             assert {row["decision"] for row in decisions} == {"NO_TRADE", "PUT"}
             admitted = [row for row in fe._iter_jsonl(service.episode_path) if row["admitted"]]
             assert [row["side"] for row in admitted] == ["PUT"]
+            assert admitted[0]["regime_tag"]["state"] == "UNKNOWN"
+            assert admitted[0]["regime_tag"]["admission_gate"] is False
             assert len(list(fe._iter_jsonl(service.evidence_manifest_path))) == 2
             assert len(list(fe._iter_jsonl(service.decision_event_path))) == 2
             assert len(list(fe._iter_jsonl(service.gate_result_path))) == 10
@@ -727,6 +732,174 @@ def test_collector_admits_only_qualified_reversal_before_poll():
             assert len(service.active) == 1
             assert not service.no_trade_bid_path.exists()
             assert service.bid_path.exists()
+            service.replay_writer.close()
+    finally:
+        collector.intelligence.evaluate_reversal_setup = original_evaluate
+        collector.ROOT = old_root
+        if old_flag is None:
+            os.environ.pop("ENTRY_INTEL_BID_CAPTURE_ENABLED", None)
+        else:
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = old_flag
+
+
+def test_v1_2_collector_rolls_session_date_without_process_restart():
+    call_setup = ei.evaluate_reversal_setup(
+        symbol="SPY", side="CALL", minute_bars=minute_bars("CALL"), now_minute=80,
+        context={"prior_day_low": 91.3, "premarket_low": 90.0,
+                 "session_vwap": 93.0}, rules=rules("CALL"))
+    put_setup = {
+        **call_setup, "side": "PUT", "qualified": False,
+        "failed": ["momentum_slowing"],
+    }
+    old_flag = os.environ.get("ENTRY_INTEL_BID_CAPTURE_ENABLED")
+    old_root = collector.ROOT
+    original_evaluate = collector.intelligence.evaluate_reversal_setup
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            collector.ROOT = Path(td)
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = "1"
+            service = collector.EntryBidCollector(
+                stock_data=None, option_data=None, feed="iex")
+            service._maybe_refresh_universe = lambda _now_et: None
+            service._underlying_inputs = lambda **_kwargs: ([], {})
+            service._live_contracts = lambda **_kwargs: {
+                "selected": None, "rejected": [], "eligible_count": 0,
+                "source_status": "MISSING", "reason": "test_no_contract",
+            }
+            collector.intelligence.evaluate_reversal_setup = (
+                lambda **kwargs: call_setup if kwargs["side"] == "CALL" else put_setup)
+
+            first_now = datetime(2026, 8, 13, 15, 0, tzinfo=timezone.utc)
+            second_now = first_now + timedelta(days=1)
+            for now in (first_now, second_now):
+                opened = now - timedelta(minutes=80)
+                status = service.tick(
+                    market_active=True,
+                    session_open_et=opened,
+                    session_close_et=opened + timedelta(hours=6, minutes=30),
+                    now=now,
+                )
+                assert status["state"] == "ACTIVE_RTH_CAPTURE"
+
+            episodes = [
+                row for row in fe._iter_jsonl(service.episode_path)
+                if row.get("side") == "CALL"
+            ]
+            assert [row["session_date"] for row in episodes] == [
+                "2026-08-13", "2026-08-14"]
+            assert [row["decided_at"][:10] for row in episodes] == [
+                "2026-08-13", "2026-08-14"]
+            assert all(row["admitted"] is True for row in episodes)
+            service.replay_writer.close()
+    finally:
+        collector.intelligence.evaluate_reversal_setup = original_evaluate
+        collector.ROOT = old_root
+        if old_flag is None:
+            os.environ.pop("ENTRY_INTEL_BID_CAPTURE_ENABLED", None)
+        else:
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = old_flag
+
+
+def test_regime_classifier_failure_does_not_gate_episode_admission():
+    call_setup = ei.evaluate_reversal_setup(
+        symbol="SPY", side="CALL", minute_bars=minute_bars("CALL"), now_minute=80,
+        context={"prior_day_low": 91.3, "premarket_low": 90.0,
+                 "session_vwap": 93.0}, rules=rules("CALL"))
+    put_setup = {
+        **call_setup,
+        "side": "PUT",
+        "qualified": False,
+        "failed": ["momentum_slowing"],
+    }
+    old_flag = os.environ.get("ENTRY_INTEL_BID_CAPTURE_ENABLED")
+    old_root = collector.ROOT
+    original_evaluate = collector.intelligence.evaluate_reversal_setup
+    original_regime = collector.regime_layer_v0.classify_regime
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            collector.ROOT = Path(td)
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = "1"
+            service = collector.EntryBidCollector(
+                stock_data=None, option_data=None, feed="iex")
+            service._underlying_inputs = lambda **kwargs: ([], {})
+            collector.intelligence.evaluate_reversal_setup = (
+                lambda **kwargs: call_setup if kwargs["side"] == "CALL" else put_setup)
+            collector.regime_layer_v0.classify_regime = (
+                lambda **kwargs: (_ for _ in ()).throw(RuntimeError("test failure")))
+            service._live_contracts = lambda **kwargs: {
+                "selected": None, "rejected": [], "eligible_count": 0,
+                "source_status": "MISSING", "reason": "test_no_contract",
+            }
+            opened = NOW - timedelta(minutes=80)
+
+            service._evaluate_minute(
+                session_open_et=opened,
+                session_close_et=opened + timedelta(hours=6, minutes=30),
+                now=NOW)
+
+            admitted = [
+                row for row in fe._iter_jsonl(service.episode_path)
+                if row.get("admitted") is True
+            ]
+            assert [row["side"] for row in admitted] == ["CALL"]
+            assert admitted[0]["regime_tag"]["state"] == "UNKNOWN"
+            assert admitted[0]["regime_tag"]["missing_reasons"] == [
+                "regime_classifier_error:RuntimeError"]
+            service.replay_writer.close()
+    finally:
+        collector.intelligence.evaluate_reversal_setup = original_evaluate
+        collector.regime_layer_v0.classify_regime = original_regime
+        collector.ROOT = old_root
+        if old_flag is None:
+            os.environ.pop("ENTRY_INTEL_BID_CAPTURE_ENABLED", None)
+        else:
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = old_flag
+
+
+def test_collector_quarantines_cross_side_double_qualification():
+    call_setup = ei.evaluate_reversal_setup(
+        symbol="SPY", side="CALL", minute_bars=minute_bars("CALL"), now_minute=80,
+        context={"prior_day_low": 91.3, "premarket_low": 90.0,
+                 "session_vwap": 93.0}, rules=rules("CALL"))
+    put_setup = {
+        **call_setup,
+        "side": "PUT",
+        "reference_extreme_bucket": int(call_setup["reference_extreme_bucket"]) + 1,
+    }
+    old_flag = os.environ.get("ENTRY_INTEL_BID_CAPTURE_ENABLED")
+    old_root = collector.ROOT
+    original_evaluate = collector.intelligence.evaluate_reversal_setup
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            collector.ROOT = Path(td)
+            os.environ["ENTRY_INTEL_BID_CAPTURE_ENABLED"] = "1"
+            service = collector.EntryBidCollector(
+                stock_data=None, option_data=None, feed="iex")
+            service._underlying_inputs = lambda **kwargs: ([], {})
+            collector.intelligence.evaluate_reversal_setup = (
+                lambda **kwargs: call_setup if kwargs["side"] == "CALL" else put_setup)
+            service._live_contracts = lambda **kwargs: pytest.fail(
+                "contract polling must not occur after an integrity failure")
+            opened = NOW - timedelta(minutes=80)
+
+            with pytest.raises(
+                    collector.episode_integrity.CrossSideDoubleQualificationError,
+                    match="INTEGRITY_CROSS_SIDE_DOUBLE_QUALIFICATION"):
+                service._evaluate_minute(
+                    session_open_et=opened,
+                    session_close_et=opened + timedelta(hours=6, minutes=30),
+                    now=NOW)
+
+            quarantined = list(fe._iter_jsonl(service.episode_quarantine_path))
+            events = list(fe._iter_jsonl(service.integrity_event_path))
+            assert {row["side"] for row in quarantined} == {"CALL", "PUT"}
+            assert all(row["quarantine_status"] ==
+                       "INTEGRITY_CROSS_SIDE_DOUBLE_QUALIFICATION" for row in quarantined)
+            assert all(row["eligible_for_phase4_inference"] is False
+                       for row in quarantined)
+            assert len(events) == 1
+            assert events[0]["event_type"] == "INTEGRITY_CROSS_SIDE_DOUBLE_QUALIFICATION"
+            assert list(fe._iter_jsonl(service.episode_path)) == []
             service.replay_writer.close()
     finally:
         collector.intelligence.evaluate_reversal_setup = original_evaluate

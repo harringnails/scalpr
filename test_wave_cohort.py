@@ -5,18 +5,23 @@ Drives the observer to produce completed shadow simulations, then checks the
 per-tranche attribution and the 8-section cohort report. Behavior is unchanged;
 this only reads artifacts. Isolated in a temp CWD.
 """
-import os
 import tempfile
 from datetime import datetime, timezone
 
+import pytest
+
 TMP = tempfile.mkdtemp()
-os.chdir(TMP)
 
 import wave_quotes as wq            # noqa: E402
 import wave_store as wst            # noqa: E402
 import wave_cohort as wcohort       # noqa: E402
 from wave_config import WaveConfig  # noqa: E402
 from wave_observer import ShadowObserver  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_cwd(monkeypatch):
+    monkeypatch.chdir(TMP)
 
 
 def check(name, cond):

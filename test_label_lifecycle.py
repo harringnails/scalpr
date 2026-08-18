@@ -17,6 +17,7 @@ import json
 import os
 import tempfile
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import feature_engine as fe
 import label_lifecycle as ll
@@ -77,7 +78,8 @@ def test_snapshot_immutable_idempotent():
     payload = {"spot": 100.0, "iv_rank": 30,
                "contracts": [{"symbol": "Z", "type": "C", "delta": 0.5, "mid": 1.0,
                               "gamma": 0.0, "expiry": FAR_EXPIRY}]}
-    fr = fe.build_feature_record(None, "SPY", workup_payload=payload)
+    with patch("regime_model.regime_read", return_value={"available": False}):
+        fr = fe.build_feature_record(None, "SPY", workup_payload=payload)
     d1 = fe.persist_feature_snapshot(fr, payload["contracts"], "2026-07-27", path=path)
     d2 = fe.persist_feature_snapshot(fr, payload["contracts"], "2026-07-27", path=path)
     check("first write returns decision_id", d1 is not None)

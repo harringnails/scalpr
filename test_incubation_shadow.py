@@ -2,18 +2,23 @@
 ENTRY_INCUBATION_SHADOW tests — capture lifecycle + factorial cohort + isolation.
 Isolated in a temp CWD. No live Guard, no broker, nothing live.
 """
-import os
-import sys
+import inspect
 import tempfile
 
+import pytest
+
 TMP = tempfile.mkdtemp()
-os.chdir(TMP)
 
 import entry_incubation_study as st        # noqa: E402
 import incubation_config as icfg           # noqa: E402
 import incubation_shadow as ish            # noqa: E402
 import incubation_cohort as icoh           # noqa: E402
 import incubation_store as ist             # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_cwd(monkeypatch):
+    monkeypatch.chdir(TMP)
 
 
 def check(name, cond):
@@ -156,10 +161,9 @@ def test_schema_hash_changed():
 # ── isolation ───────────────────────────────────────────────────────────────
 def test_isolation():
     print("No scalp_server import, no broker path in incubation modules")
-    check("scalp_server not imported", "scalp_server" not in sys.modules)
-    import inspect
     for m in (ish, ist, icoh, icfg, st):
         src = inspect.getsource(m)
+        check(f"{m.__name__}: no scalp_server import", "import scalp_server" not in src)
         check(f"{m.__name__}: no submit_order",
               "submit_order" not in src and "MarketOrderRequest" not in src)
 

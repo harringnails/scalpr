@@ -23,10 +23,13 @@ from statistics import mean
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
+import entry_episode_integrity_v1 as episode_integrity
+
 
 SCHEMA_VERSION = "a2-underlying-forward-return-v2"
 DEFAULT_TICK_LOG = Path("tick_log.csv")
 DEFAULT_EPISODES = Path("entry_intelligence_episodes_v1.jsonl")
+DEFAULT_QUARANTINE_MANIFEST = episode_integrity.DEFAULT_QUARANTINE_MANIFEST
 DEFAULT_OUTPUT_DIR = Path("v2_data") / "a2_measurement"
 DEFAULT_OUTPUT_PATH = DEFAULT_OUTPUT_DIR / "a2_labels_v2.jsonl"
 DEFAULT_SUMMARY_PATH = DEFAULT_OUTPUT_DIR / "a2_summary_v2.json"
@@ -127,16 +130,29 @@ def load_tick_sessions(
     return dict(sessions)
 
 
-def load_episodes(path: Path = DEFAULT_EPISODES, *, admitted_only: bool = True) -> list[dict[str, Any]]:
+def load_episodes(
+    path: Path = DEFAULT_EPISODES,
+    *,
+    admitted_only: bool = True,
+    quarantine_path: Path | None = None,
+    exclude_quarantined: bool = True,
+) -> list[dict[str, Any]]:
     episodes: list[dict[str, Any]] = []
     if not path.exists():
         return episodes
+    quarantine_path = quarantine_path or path.with_name(DEFAULT_QUARANTINE_MANIFEST.name)
+    quarantined = (
+        episode_integrity.quarantined_episode_record_ids(quarantine_path)
+        if exclude_quarantined else set()
+    )
     with path.open() as source:
         for line in source:
             if not line.strip():
                 continue
             row = json.loads(line)
             if admitted_only and not row.get("admitted"):
+                continue
+            if str(row.get("episode_record_id") or "") in quarantined:
                 continue
             episodes.append(row)
     return sorted(
@@ -173,6 +189,24 @@ def cross_side_timestamp_collisions(episodes: Iterable[dict[str, Any]]) -> dict[
         for timestamp, sides in sides_by_timestamp.items()
         if len(sides) > 1
     }
+
+
+def clean_a2_episodes(
+    episodes: Iterable[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, dict[str, list[str]], int]:
+    """Keep exactly the episodes eligible for A2 accrual.
+
+    Quarantine filtering happens before this function.  A co-timed opposing
+    pair is excluded as a group, not counted as two independent observations.
+    """
+    unique, duplicate_count = deduplicate_episodes(episodes)
+    collisions = cross_side_timestamp_collisions(unique)
+    collision_timestamps = set(collisions)
+    clean = [
+        episode for episode in unique
+        if str(episode.get("decided_at") or "") not in collision_timestamps
+    ]
+    return clean, duplicate_count, collisions, len(unique) - len(clean)
 
 
 def _latest_at_or_before(quotes: list[dict[str, Any]], target: datetime) -> dict[str, Any] | None:
@@ -253,6 +287,7 @@ def _base_label(episode: dict[str, Any], decided_at: datetime | None, session_da
         "direction_sign": direction_sign,
         "session_date": session_date or episode.get("session_date"),
         "decided_at": decided_at.isoformat() if decided_at else episode.get("decided_at"),
+        "regime_tag": episode.get("regime_tag"),
         "is_calibrated_probability": False,
         "horizons_minutes": list(HORIZONS_MIN),
         "primary_metric": "signed_return_60m",
@@ -279,11 +314,17 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
     session_date = str(episode.get("session_date") or "")
     label = _base_label(episode, decided_at, session_date)
     if decided_at is None or not session_date:
-        label.update({"label_status": "UNAVAILABLE", "missing_reason": "missing_decision_time"})
+        label.update({
+            "label_status": "UNAVAILABLE", "a2_outcome_status": "A2-UNAVAILABLE",
+            "missing_reason": "missing_decision_time",
+        })
         _finalize_label_id(label)
         return label
     if label["setup_direction_sign"] is None:
-        label.update({"label_status": "UNAVAILABLE", "missing_reason": "unknown_setup_direction"})
+        label.update({
+            "label_status": "UNAVAILABLE", "a2_outcome_status": "A2-UNAVAILABLE",
+            "missing_reason": "unknown_setup_direction",
+        })
         _finalize_label_id(label)
         return label
 
@@ -298,7 +339,10 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
         "anchor_offset_seconds": anchor_offset,
     })
     if anchor is None:
-        label.update({"label_status": "UNAVAILABLE", "missing_reason": "missing_clean_anchor_within_5s"})
+        label.update({
+            "label_status": "UNAVAILABLE", "a2_outcome_status": "A2-UNAVAILABLE",
+            "missing_reason": "missing_clean_anchor_within_5s",
+        })
         _finalize_label_id(label)
         return label
 
@@ -338,6 +382,7 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
         "mae": mae,
         "primary_metric_value": signed["signed_return_60m"],
         "label_status": "AVAILABLE" if not missing else "UNAVAILABLE",
+        "a2_outcome_status": "A2-AVAILABLE" if not missing else "A2-UNAVAILABLE",
         "missing_reason": None if not missing else ";".join(missing),
     })
     _finalize_label_id(label)
@@ -345,37 +390,78 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
 
 
 def measure_a2(
-    *, episodes_path: Path = DEFAULT_EPISODES, tick_log_path: Path = DEFAULT_TICK_LOG, admitted_only: bool = True
+    *, episodes_path: Path = DEFAULT_EPISODES, tick_log_path: Path = DEFAULT_TICK_LOG,
+    admitted_only: bool = True, quarantine_path: Path | None = None,
+    session_date: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    episodes = load_episodes(episodes_path, admitted_only=admitted_only)
-    unique_episodes, duplicate_count = deduplicate_episodes(episodes)
+    quarantine_path = quarantine_path or episodes_path.with_name(DEFAULT_QUARANTINE_MANIFEST.name)
+    unfiltered = load_episodes(
+        episodes_path, admitted_only=admitted_only,
+        quarantine_path=quarantine_path, exclude_quarantined=False)
+    episodes = load_episodes(
+        episodes_path, admitted_only=admitted_only,
+        quarantine_path=quarantine_path, exclude_quarantined=True)
+    if session_date:
+        unfiltered = [
+            episode for episode in unfiltered
+            if str(episode.get("session_date") or "") == session_date
+        ]
+        episodes = [
+            episode for episode in episodes
+            if str(episode.get("session_date") or "") == session_date
+        ]
+    quarantined_count = len(unfiltered) - len(episodes)
+    clean_episodes, duplicate_count, collisions, collision_rows_excluded = clean_a2_episodes(episodes)
     sessions = load_tick_sessions(tick_log_path)
     labeled = [
         label_episode(episode, session_quotes=sessions.get(str(episode.get("session_date") or "")))
-        for episode in unique_episodes
+        for episode in clean_episodes
     ]
     return labeled, summarize_a2(
-        labeled, episodes=episodes, sessions=sessions, duplicate_episode_rows_excluded=duplicate_count
+        labeled, episodes=episodes, sessions=sessions,
+        duplicate_episode_rows_excluded=duplicate_count,
+        quarantined_episode_rows_excluded=quarantined_count,
+        clean_a2_eligible_episode_count=len(clean_episodes),
+        collision_episode_rows_excluded=collision_rows_excluded,
+        known_collisions=collisions,
     )
 
 
 def summarize_a2(
     labeled: list[dict[str, Any]], *, episodes: list[dict[str, Any]] | None = None,
-    sessions: dict[str, list[dict[str, Any]]] | None = None, duplicate_episode_rows_excluded: int = 0,
+    sessions: dict[str, list[dict[str, Any]]] | None = None,
+    duplicate_episode_rows_excluded: int = 0,
+    quarantined_episode_rows_excluded: int = 0,
+    clean_a2_eligible_episode_count: int | None = None,
+    collision_episode_rows_excluded: int | None = None,
+    known_collisions: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     episodes = episodes or []
     sessions = sessions or {}
     available = [row for row in labeled if row.get("label_status") == "AVAILABLE"]
     missing = [row for row in labeled if row.get("label_status") != "AVAILABLE"]
     signed_60 = [row["signed_return_60m"] for row in available if row.get("signed_return_60m") is not None]
-    collisions = cross_side_timestamp_collisions(episodes)
+    collisions = known_collisions if known_collisions is not None else cross_side_timestamp_collisions(episodes)
+    if collision_episode_rows_excluded is None:
+        collision_timestamps = set(collisions)
+        collision_episode_rows_excluded = sum(
+            str(episode.get("decided_at") or "") in collision_timestamps
+            for episode in episodes
+        )
+    if clean_a2_eligible_episode_count is None:
+        clean_a2_eligible_episode_count = len(labeled)
     data_integrity_status = "PASS" if not collisions else "FAIL_CROSS_SIDE_TIMESTAMP_COLLISIONS"
     return {
         "schema_version": SCHEMA_VERSION,
         "measurement_config_version": MEASUREMENT_CONFIG["measurement_config_version"],
         "measurement_config_hash": MEASUREMENT_CONFIG_HASH,
         "n_episodes_input": len(episodes),
+        "n_quarantined_episode_rows_excluded": quarantined_episode_rows_excluded,
         "n_duplicate_episode_rows_excluded": duplicate_episode_rows_excluded,
+        "n_collision_episode_rows_excluded": collision_episode_rows_excluded,
+        "clean_a2_eligible_episode_count": clean_a2_eligible_episode_count,
+        "clean_a2_labelable_episode_count": len(available),
+        "clean_a2_unavailable_episode_count": len(missing),
         "n_labeled": len(labeled),
         "n_available": len(available),
         "n_missing": len(missing),
@@ -399,6 +485,7 @@ def summarize_a2(
         "notes": (
             "A2 labels use provider-time two-sided SPY mids. Anchor quotes must be at or before t0; "
             "endpoints must be at or after each fixed horizon. Missing points remain unavailable. "
+            "Only admitted, non-quarantined, non-collision episodes accrue; option trackability is irrelevant. "
             "Cross-side co-timed records are a Phase-4 integrity failure, not independent evidence."
         ),
     }
@@ -431,10 +518,23 @@ def write_summary(summary: dict[str, Any], path: Path) -> None:
         json.dump(summary, target, indent=2, sort_keys=True)
 
 
+def materialize_a2(
+    *, episodes_path: Path = DEFAULT_EPISODES, tick_log_path: Path = DEFAULT_TICK_LOG,
+    quarantine_path: Path | None = None, output_path: Path = DEFAULT_OUTPUT_PATH,
+    summary_path: Path = DEFAULT_SUMMARY_PATH,
+) -> dict[str, Any]:
+    """Append idempotent research labels and refresh the aggregate A2 summary."""
+    labeled, summary = measure_a2(
+        episodes_path=episodes_path, tick_log_path=tick_log_path,
+        quarantine_path=quarantine_path,
+    )
+    summary["records_appended"] = append_jsonl(labeled, output_path)
+    write_summary(summary, summary_path)
+    return summary
+
+
 def main() -> int:
-    labeled, summary = measure_a2()
-    summary["records_appended"] = append_jsonl(labeled, DEFAULT_OUTPUT_PATH)
-    write_summary(summary, DEFAULT_SUMMARY_PATH)
+    summary = materialize_a2()
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 

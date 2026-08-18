@@ -21,6 +21,12 @@ MVP is **not** "a profitable strategy" and **not** "go live." Given the evidence
 
 ---
 
+## Current single gate (2026-08-13)
+
+Everything is built and tested in the research shell — A2 labeler, cross-side collision remediation (quarantine + fail-closed double-qualification guard + A2 exclusion), regime layer v0, and the Stage-1a viability report. **The entire board is blocked on one operator action: restart the collector onto v1.2 at end-of-day (flat-account gated), verify the runtime reports `v1.2`, and confirm a post-restart collision scan of 0** — see `COLLECTOR_V1.2_RESTART_RUNBOOK.md`. The source is already v1.2; the live runtime is a stale v1.1 process, so a clean restart is the whole fix. Until then, zero clean prospective episodes accrue and Stage-1a correctly reads `INSUFFICIENT_TAGGING`. After the restart, the clean accrual clock starts; the ≥200-episode gate is ~12–18 months out at the v1 fire rate (the open Reversal-v2 timeline decision, not an engineering task).
+
+---
+
 ## Phase 0 — Finish the good state (housekeeping)
 
 - [x] Complete the git baseline commit on the Mac (repo initialized, `.gitignore` protects secrets); push/copy off-machine. **Done =** committed + backed up externally.
@@ -47,13 +53,17 @@ Stage A closed as **A2**: the single-option executable-bid basis is not reliably
 Pre-reg spec: `A2_OUTCOME_BASIS_SPEC.md`.
 
 - [x] **Pre-register the A2 alternative outcome basis.** Recommendation: **underlying-forward-return** over greeks-mapped (0DTE gamma/theta make the greeks map inaccurate on exactly the big moves). **Done =** frozen A2 basis spec with bias controls.
-- [ ] **Build/validate the A2 measurement** — `a2_measurement.py` now produces signed 5/15/30/60-minute labels from provider-time, two-sided SPY quote mids, preserving endpoint timestamps, source provenance, missingness, and one-observation-per-episode-key. The prior completed-minute-bar prototype is not used for primary A2 labels because it cannot preserve intraminute point-in-time boundaries. The strict local replay finds 10/26 fully labelable records, but all 26 legacy records are 13 co-timed CALL/PUT pairs caused by a now-fixed admission bug. They are ineligible for inference. Phase 4 remains blocked by the 200-episode gate, the collision preflight, and `A2_HISTORICAL_VALIDITY_DETERMINATION.md`.
+- [x] **Build/validate the A2 measurement** — `a2_measurement.py` produces signed 5/15/30/60-minute labels from provider-time, two-sided SPY quote mids, preserving endpoint timestamps, source provenance, missingness, and one-observation-per-episode-key. Built + tested.
+- [x] **Cross-side collision remediation** — legacy co-timed CALL/PUT pairs traced to the pre-fix `has_reference → admit_episode` path (all M1). Fixed: `setup.qualified` admission gate, fail-closed `INTEGRITY_CROSS_SIDE_DOUBLE_QUALIFICATION` guard, quarantine manifest (data preserved, marked ineligible), A2 excludes quarantined IDs by default. Tests real (`pytest` in `.venv`). See `A2_COLLISION_REMEDIATION_DIRECTIVE.md`.
+- [ ] **Operational gate — restart collector on v1.2** (EOD, flat-account) → verify runtime `v1.2` → post-restart collision scan = 0. See `COLLECTOR_V1.2_RESTART_RUNBOOK.md`. **Until done, no clean prospective episodes accrue.**
 
 ## Phase 4 — The MVP question: does any signal have edge?
 
 - Edge-test spec: `REVERSAL_PHASE4_EDGE_TEST_SPEC.md`.
+- Part 0 determination: threshold provenance is **UNPROVEN** (`A2_EXPLORATORY_HISTORICAL_RUN_DIRECTIVE.md`), so historical reconstruction is **exploratory / non-inferential only**. The inferential verdict comes solely from prospective data the thresholds never saw. Two tracks:
 
-- [ ] **Run the cheap directional-edge test.** Does the reversal setup (frozen, as-is) predict the underlying's forward move on the A2 basis, against a **session-block matched null + 4-fold chronological walk-forward**? **Done =** honest EDGE / NO EDGE / UNDERPOWERED verdict.
+- [ ] **Exploratory historical run (fast, non-inferential).** Frozen detector over historical SPY 5-min bars → A2 labels → full harness, stamped `EXPLORATORY — NON-INFERENTIAL`. **Done =** episode count + descriptive stats (mean signed 60m return, null p, per-fold signs) reported as pipeline validation + directional smell test. **This does NOT close the box.**
+- [ ] **Inferential edge test (prospective, the real verdict).** Accrue ≥200 non-overlapping episodes on the now-fixed collector (fresh data the thresholds never saw), then run the frozen harness → honest EDGE / NO EDGE / UNDERPOWERED. **Done =** verdict on out-of-sample prospective data. ~1yr at the v1 fire rate.
 - [ ] **Branch on the result:**
   - **UNDERPOWERED / INCONCLUSIVE** → collect more episodes until the 200-episode validity gate is satisfied; do not call no-edge yet.
   - **No edge** → a real result. Pivot effort to the denser-signal order-flow studies (dealer pressure / CVD), not more reversal variants.
@@ -66,6 +76,7 @@ Pre-reg spec: `A2_OUTCOME_BASIS_SPEC.md`.
 - **Dealer Pressure Advisory Study** (`DEALER_PRESSURE_ADVISORY_STUDY_SPEC.md`) — UW authenticated; next is the real Step 0 field audit (are per-trade delta/gamma/underlying point-in-time?). Denser-signal candidate.
 - **IVolatility research annex** (`IVOLATILITY_RESEARCH_ANNEX_PROPOSAL.md`) — IVOL authenticated; Stage P/D fidelity probe when a reference capture exists.
 - **CVD-Lab** (separate repo) — Databento MES data engineering strong; detector v2 fell short of the 100-episode floor (96); freeze v2, test on fresh out-of-sample sessions.
+- **Regime Layer v0** (`REGIME_LAYER_SPEC_v0.md`) — deterministic trend/range/high-vol tagger (efficiency ratio + ATR percentile), causal/point-in-time, advisory-only, no admission authority. Built + tested; attaches `regime_tag` to episodes. Stage-1a viability report built (`regime_distribution_v0.py`, currently `INSUFFICIENT_TAGGING` on the empty clean set). Conditions on the v1.2 clean stream; Stage-2 gated on Stage-1a = `VIABLE`.
 
 ## Ordering rationale
 

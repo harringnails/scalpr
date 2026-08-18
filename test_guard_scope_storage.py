@@ -88,6 +88,25 @@ def test_reconciliation_retires_only_confirmed_orphans():
         assert guard2.done is False
 
 
+def test_reconciliation_marks_incubation_after_external_broker_exit():
+    with tempfile.TemporaryDirectory() as td:
+        guard = _guard()
+        guard.incubation_trade_id = "shadow-trade-1"
+        platform = _platform_for_reconcile(guard, _Trading([]), Path(td) / "health.jsonl")
+        import incubation_server
+        original = incubation_server.mark_live_exit
+        marked = []
+        try:
+            incubation_server.mark_live_exit = lambda *args, **kwargs: marked.append((args, kwargs))
+            assert platform._maybe_reconcile_guards(0) == [guard.symbol]
+        finally:
+            incubation_server.mark_live_exit = original
+        assert marked == [(
+            ("shadow-trade-1", "BROKER_RECONCILIATION_EXTERNAL_EXIT", None),
+            {"initiated_by": "broker_reconciliation"},
+        )]
+
+
 def test_spy_zero_to_two_dte_scope():
     as_of = date(2026, 8, 3)
     assert scope_policy.validate_option("SPY260803C00600000", as_of)["dte"] == 0

@@ -55,6 +55,7 @@ def admit_episode(candidate: dict, *, existing: list[dict], outcome_horizon_minu
         "episode_kind": candidate.get("episode_kind", "TRADE"),
         "decided_at": decided.isoformat(), "admitted": reason is None,
         "rejection_reason": reason, "execution_authority": False,
+        "regime_tag": candidate.get("regime_tag"),
     }
     return record
 

@@ -212,6 +212,10 @@
             <b>WHOLE_POSITION_RATCHET.</b> These are giveback tiers, not staged scale-out levels.
             A valid exit sells <b>100% of the remaining position</b> in one order.
             Partial profit-taking is not enabled (works the same for 1, 2, or many contracts).</div>
+          <label class="tag" style="display:block;margin-top:10px;max-width:380px">
+            <input id="runnerEnabled" type="checkbox" style="width:auto"> Enable regime-flow runner (PAPER study)
+            <span style="display:block;margin-top:3px">After +20%, it allows up to a 10% giveback only when audited, validation-ready regime and a fresh five-minute Unusual Whales snapshot with three or more captured events whose classified flow is unanimous agree with the contract for two distinct updates. It falls back to this ladder on any gap.</span>
+          </label>
         </div>
         <label>Take profit if it goes flat for (seconds)
           <span class="help" data-tip="If the trade stops making new highs for this many seconds, sell and bank the gain \u2014 catches a winner that stalls out instead of dipping.">?</span>
@@ -248,8 +252,10 @@
       </div>
       <button class="primary" id="goBtn" onclick="submitTrade()">ENGAGE SCALPER · AUTO-EXIT</button>
       <button type="button" id="checkBtn" onclick="runPrecheck()" style="margin-left:10px">Run pre-trade check</button>
+      <button type="button" id="skipBtn" onclick="logDiscretionarySkip()" style="margin-left:10px">Log skip · secondary</button>
       <button type="button" id="premktBtn" onclick="runPremarket()" style="margin-left:10px">Premarket assessment</button>
       <span id="cpFlash" class="cp-flash"></span>
+      <div class="tag" style="margin-top:7px">Log skip records an explicit operator decision only. It submits no order and is marked operator-driven secondary data.</div>
       <div id="msg"></div>
       <div id="pcOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
       <div id="pmOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
@@ -299,6 +305,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
+let lastPrecheckSnapshot = null;
 
 // ── audio cues (synthesized, no files) ──────────────────────────────────
 let soundOn = true;
@@ -386,6 +393,7 @@ function updateManualScopeWarning() {
 }
 
 $('type').addEventListener('change', () => {
+  lastPrecheckSnapshot = null;
   const isOpt = $('type').value === 'option';
   $('allocLabel').firstChild.textContent = isOpt ? 'Contracts (qty) ' : 'Allocation ($) ';
   $('alloc').value = isOpt ? 1 : 1000;
@@ -400,7 +408,7 @@ $('type').addEventListener('change', () => {
 });
 $('type').dispatchEvent(new Event('change'));
 
-$('symbol').addEventListener('input', syncUnderlyingFromSymbol);
+$('symbol').addEventListener('input', () => { lastPrecheckSnapshot = null; syncUnderlyingFromSymbol(); });
 $('symbol').addEventListener('input', updateManualScopeWarning);
 $('optUnderlying').addEventListener('input', updateManualScopeWarning);
 
@@ -528,6 +536,10 @@ async function submitTrade() {
     grace_seconds: parseInt($('graceSec').value) || 0,
     confirm_ticks: parseInt($('confirmTicks').value) || 1
   };
+  cfg.runner_policy = {
+    enabled: $('runnerEnabled').checked,
+    version: 'regime-flow-runner-v1'
+  };
   cfg.auto_exit_authorized = true;
   cfg.climb_adds = {
     enabled: $('climbEnabled').checked,
@@ -535,6 +547,8 @@ async function submitTrade() {
     max_adds: parseInt($('climbMax').value) || 2
   };
   cfg.request_id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  const currentPrecheck = matchingPrecheckSnapshot();
+  if (currentPrecheck) cfg.entry_signals = currentPrecheck;
   if ($('type').value === 'option') cfg.qty = parseFloat($('alloc').value);
   else cfg.notional = parseFloat($('alloc').value);
   if (!cfg.symbol) return showMsg('Symbol required.', true);
@@ -558,6 +572,38 @@ async function submitTrade() {
     refresh();
   } catch (e) { showMsg(e.message, true); }
   $('goBtn').disabled = false;
+}
+
+function matchingPrecheckSnapshot() {
+  if (!lastPrecheckSnapshot) return null;
+  const symbol = $('symbol').value.trim().toUpperCase();
+  const type = $('type').value;
+  return lastPrecheckSnapshot.symbol === symbol && lastPrecheckSnapshot.type === type
+    ? lastPrecheckSnapshot.value : null;
+}
+
+async function logDiscretionarySkip() {
+  const symbol = $('symbol').value.trim().toUpperCase();
+  if (!symbol) return showMsg('Pick the considered contract before logging a skip.', true);
+  const cfg = {
+    symbol,
+    type: $('type').value,
+    request_id: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`)
+  };
+  const currentPrecheck = matchingPrecheckSnapshot();
+  if (currentPrecheck) cfg.entry_signals = currentPrecheck;
+  $('skipBtn').disabled = true;
+  try {
+    const response = await fetch('/api/discretionary-override/skip', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)
+    });
+    const result = await response.json();
+    if (!response.ok || !result.logged) throw new Error(result.error || `HTTP ${response.status}`);
+    showMsg(`Secondary skip logged: ${result.operator_action}. No order submitted.`, false);
+  } catch (error) {
+    showMsg(`Skip log failed; no order was submitted: ${error.message}`, true);
+  }
+  $('skipBtn').disabled = false;
 }
 
 function showMsg(t, err) { const m = $('msg'); m.textContent = t;
@@ -596,12 +642,16 @@ function cssId(sym) { return sym.replace(/[^A-Za-z0-9]/g, '_'); }
 function card(p) {
   const paused = !!p.paused;
   const degraded = p.quote_status !== 'OK';
-  const armed = !paused && !degraded && (p.tolerance <= 0.1 || p.peak >= 20);
+  const runner = p.runner_policy || {};
+  const runnerActive = runner.enabled && runner.status === 'ACTIVE';
+  const razorTight = !paused && !degraded && p.tolerance <= 0.1;
+  const highProfitTrail = !paused && !degraded && p.peak >= 20;
+  const armed = razorTight || highProfitTrail;
   const cls = p.profit === null ? 'neg' : (p.profit >= 0 ? 'pos' : 'neg');
   const hist = priceHist[p.symbol] || [];
   if (p.last !== null) priceHist[p.symbol] = hist.concat(p.last).slice(-60);
-  const stateLabel = degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (armed ? 'RAZOR TIGHT' : 'GUARDING'));
-  const stateColor = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (armed ? 'var(--blade)' : 'var(--steel)'));
+  const stateLabel = degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (runnerActive ? 'REGIME-FLOW RUNNER' : (razorTight ? 'RAZOR TIGHT' : (highProfitTrail ? 'HIGH-PROFIT TRAIL' : 'GUARDING'))));
+  const stateColor = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (runnerActive ? 'var(--green)' : (armed ? 'var(--blade)' : 'var(--steel)')));
   const guardBtn = paused
     ? `<button onclick="resumeGuard('${p.symbol}')" style="background:var(--green);color:#04140b">Enable automatic sells</button>`
     : `<button onclick="pauseGuard('${p.symbol}')">Pause automatic sells</button>`;
@@ -618,6 +668,7 @@ function card(p) {
     <div class="kv"><span>tolerance now</span><b class="c-tol">${p.tolerance}%</b></div>
     <div class="kv"><span>sells at</span><b class="razor c-sells">${degraded ? 'unprotected — no executable bid' : (paused ? 'paused — no exits' : (p.sell_level_pct >= 0 ? '+' : '') + p.sell_level_pct.toFixed(3) + '%')}</b></div>
     <div class="kv"><span>qty</span><b>${p.qty}</b></div>
+    ${runner.enabled ? `<div class="kv"><span>runner policy</span><b class="c-runner">${runner.status || 'AWAITING_OBSERVATION'}</b></div>` : ''}
     <div class="tag" style="color:var(--faint);margin-top:2px">whole-position ratchet · a valid exit sells 100%</div>
     ${p.scope_class === 'manual_out_of_envelope' ? '<div class="tag" style="color:var(--amber);margin-top:4px;font-weight:700">OUT OF VALIDATED SCOPE · ratchet behavior unvalidated · excluded from research metrics</div>' : ''}
     ${degraded ? '<div class="tag" style="color:var(--blade);margin-top:4px">Ask and midpoint are ignored; the ratchet cannot evaluate an exit until a positive bid returns.</div>' : (paused ? '<div class="tag" style="color:var(--amber);margin-top:4px">Ratchet disengaged — no downside protection</div>' : '')}
@@ -744,14 +795,19 @@ function updateCard(p) {
   if (!el) { lastSymbols = null; return; }   // force rebuild next tick
   const paused = !!p.paused;
   const degraded = p.quote_status !== 'OK';
-  const armed = !paused && !degraded && (p.tolerance <= 0.1 || p.peak >= 20);
+  const runner = p.runner_policy || {};
+  const runnerActive = runner.enabled && runner.status === 'ACTIVE';
+  const razorTight = !paused && !degraded && p.tolerance <= 0.1;
+  const highProfitTrail = !paused && !degraded && p.peak >= 20;
+  const armed = razorTight || highProfitTrail;
   el.className = 'card' + (armed ? ' armed' : '');
   const cls = p.profit === null ? 'neg' : (p.profit >= 0 ? 'pos' : 'neg');
   let hist = priceHist[p.symbol] || [];
   if (p.last !== null) hist = (priceHist[p.symbol] = hist.concat(p.last).slice(-60));
   const set = (sel, val) => { const n = el.querySelector(sel); if (n) n.innerHTML = val; };
-  set('.c-state', degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (armed ? 'RAZOR TIGHT' : 'GUARDING')));
-  el.querySelector('.c-state').style.color = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (armed ? 'var(--blade)' : 'var(--steel)'));
+  set('.c-state', degraded ? 'NO BID — UNPROTECTED' : (paused ? 'GUARD PAUSED' : (runnerActive ? 'REGIME-FLOW RUNNER' : (razorTight ? 'RAZOR TIGHT' : (highProfitTrail ? 'HIGH-PROFIT TRAIL' : 'GUARDING')))));
+  el.querySelector('.c-state').style.color = degraded ? 'var(--blade)' : (paused ? 'var(--amber)' : (runnerActive ? 'var(--green)' : (armed ? 'var(--blade)' : 'var(--steel)')));
+  set('.c-runner', runner.enabled ? (runner.status || 'AWAITING_OBSERVATION') : '');
   set('.c-big', p.profit === null ? 'UNAVAILABLE' : `${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(3)}%`);
   el.querySelector('.c-big').className = 'big c-big ' + cls;
   set('.c-spark', sparkline(hist));
@@ -851,6 +907,7 @@ async function runPrecheck(){
     const r=await fetch('/api/precheck?symbol='+encodeURIComponent(s)+'&type='+$('type').value);
     if(!r.ok) throw new Error((await r.json()).detail);
     const p=await r.json();
+    lastPrecheckSnapshot={symbol:s.toUpperCase(),type:$('type').value,value:p};
     const esc=t=>{const d=document.createElement('div');d.textContent=t==null?'':String(t);return d.innerHTML;};
     const w=p.weighted_read;
     if(!w) throw new Error('weighted evidence read unavailable');
@@ -893,7 +950,7 @@ async function runPrecheck(){
         '<div class="tag" style="margin-top:8px;color:var(--faint)">'+esc(p.disclaimer)+'</div>'+
         historical+
       '</details>';
-  }catch(e){ $('pcOut').innerHTML='<span style="color:var(--blade)">Check failed: '+e.message+'</span>'; }
+  }catch(e){ lastPrecheckSnapshot=null; $('pcOut').innerHTML='<span style="color:var(--blade)">Check failed: '+e.message+'</span>'; }
   $('checkBtn').disabled=false;
 }
 

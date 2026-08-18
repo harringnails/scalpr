@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from institutional_flow import InstitutionalFlowEvent
+from institutional_flow import InstitutionalFlowEvent, InstitutionalFlowSnapshot
 
 
 DEFAULT_PATH = Path("institutional_flow_v0.db")
@@ -97,6 +97,20 @@ class InstitutionalFlowStore:
                 VALUES (?, ?, ?, ?, ?)
             """, (key, snapshot.ticker, snapshot.window_end.isoformat(),
                   snapshot.window_minutes, raw)).rowcount)
+
+    def latest_snapshot(self, *, ticker: str, window_minutes: int):
+        """Return the newest persisted snapshot for one deterministic flow window."""
+        symbol = str(ticker).strip().upper()
+        window = int(window_minutes)
+        if not symbol or window <= 0:
+            raise ValueError("ticker and positive window_minutes are required")
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT raw_json FROM institutional_flow_snapshots
+                WHERE ticker = ? AND window_minutes = ?
+                ORDER BY window_end DESC LIMIT 1
+            """, (symbol, window)).fetchone()
+        return InstitutionalFlowSnapshot.model_validate_json(row[0]) if row else None
 
     def record_health(self, status: dict):
         clean = {k: v for k, v in status.items() if k not in {"token", "authorization", "headers"}}

@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from ivolatility_adapter import IVolatilityClient, IVolatilityError, IVolatilityUnavailable
 from options_feature_store import OptionsFeatureStore
-from options_capture_service import OptionsCaptureService
+from options_capture_service import OptionsCaptureService, capture_result_disposition
 from options_intelligence import (
     build_chain_snapshot, canonical_hash, engineer_options_features,
     normalize_ivolatility_row,
@@ -172,6 +172,38 @@ def test_pending_capture_is_raw_only_and_not_promoted():
         status = store.status()
         assert status["raw_captures"] == 1
         assert status["snapshots"] == 0 and status["feature_records"] == 0
+
+
+def test_empty_capture_is_not_complete_and_retries():
+    disposition = capture_result_disposition({
+        "source_status": "no_usable_contracts",
+        "promoted": False,
+        "contract_count": 0,
+    })
+    assert disposition == {
+        "complete": False,
+        "health_status": "DEGRADED",
+        "retry_seconds": 900.0,
+    }
+
+
+def test_nonempty_promoted_capture_is_complete():
+    disposition = capture_result_disposition({
+        "source_status": "ready",
+        "promoted": True,
+        "contract_count": 2,
+    })
+    assert disposition == {
+        "complete": True,
+        "health_status": "OK",
+        "retry_seconds": None,
+    }
+
+
+def test_runtime_status_exposes_empty_capture_retry_policy():
+    source = Path("scalp_server.py").read_text(encoding="utf-8")
+    assert '"completion_policy": "PROMOTED_NONEMPTY_ONLY"' in source
+    assert '"empty_capture_retry_seconds": 900' in source
 
 
 if __name__ == "__main__":

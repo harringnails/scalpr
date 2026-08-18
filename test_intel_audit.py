@@ -20,6 +20,7 @@ import json
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import feature_engine as fe
 import label_lifecycle as ll
@@ -161,7 +162,10 @@ def test_score_reproducible_from_disk():
     print("Rules score reproduces field-for-field from a persisted snapshot, no APIs")
     payload = {"spot": 100.0, "iv_rank": 30,
                "contracts": [_contract("A", delta=0.5), _contract("B", delta=0.3)]}
-    fr = fe.build_feature_record(None, "SPY", workup_payload=payload)   # None = no live API
+    # This test is about persisted-score determinism, not fitting the machine's
+    # potentially large local regime history.
+    with patch("regime_model.regime_read", return_value={"available": False}):
+        fr = fe.build_feature_record(None, "SPY", workup_payload=payload)
     path = os.path.join(TMP, "score.jsonl")
     fe.persist_feature_snapshot(fr, payload["contracts"], "2026-07-27", path=path)
     snap = fe.read_feature_snapshots(path)[0]

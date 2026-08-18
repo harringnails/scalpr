@@ -17,8 +17,8 @@ Design notes:
   * Prices come from a polling loop (2x/second, batched) rather than a
     websocket — simpler, robust, and lets you add trades at any time.
     scalp_engine.py remains the tick-level websocket alternative.
-  * The ratchet ladder is enforced server-side. The market read is
-    advisory text only; it can never loosen the ladder.
+  * The ratchet ladder is enforced server-side. A separate, opt-in PAPER-only
+    regime-flow runner may widen it only after its deterministic gates pass.
 """
 
 import argparse
@@ -49,6 +49,9 @@ from explanation_layer_v0 import (
 )
 import scope_policy
 import manual_scope_policy
+import regime_layer_v0
+import regime_flow_runner_v1 as runner_policy
+import regime_flow_runner_measurement_v0 as runner_measurement
 from storage_maintenance import rotate_csv, storage_health
 
 from fastapi import FastAPI, HTTPException
@@ -198,6 +201,67 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def _discretionary_followed(precheck_snapshot):
+    """Map the weighted precheck headline to the operator comparison flag."""
+    weighted = (precheck_snapshot or {}).get("weighted_read") or precheck_snapshot or {}
+    return str(weighted.get("decision") or "").strip().upper() == "YES"
+
+
+def _decision_time_spy_bars(decided_at=None, tick_path=TICK_LOG):
+    """Build decision-time SPY minute OHLC from the local provider-timed tick log."""
+    from zoneinfo import ZoneInfo
+
+    decided = decided_at or datetime.now(timezone.utc)
+    if decided.tzinfo is None:
+        decided = decided.replace(tzinfo=timezone.utc)
+    decided = decided.astimezone(timezone.utc)
+    et = ZoneInfo("America/New_York")
+    decided_et = decided.astimezone(et)
+    open_et = decided_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    now_minute = max(0, int((decided_et - open_et).total_seconds() // 60))
+    if not Path(tick_path).exists():
+        return [], now_minute
+
+    buckets = {}
+    with Path(tick_path).open(newline="") as source:
+        for row in csv.DictReader(source):
+            if str(row.get("symbol") or "").upper() != "SPY":
+                continue
+            raw_ts = row.get("provider_ts")
+            if not raw_ts:
+                continue
+            try:
+                provider_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                if provider_ts.tzinfo is None:
+                    provider_ts = provider_ts.replace(tzinfo=timezone.utc)
+                provider_ts = provider_ts.astimezone(timezone.utc)
+                provider_et = provider_ts.astimezone(et)
+                if provider_ts > decided or provider_et.date() != decided_et.date():
+                    continue
+                minute = int((provider_et - open_et).total_seconds() // 60)
+                if minute < 0 or minute > now_minute:
+                    continue
+                mid = float(row.get("mid") or 0)
+                if mid <= 0:
+                    bid, ask = float(row.get("bid") or 0), float(row.get("ask") or 0)
+                    mid = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
+                if mid <= 0:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            bar = buckets.get(minute)
+            if bar is None:
+                buckets[minute] = {
+                    "t": minute, "open": mid, "high": mid, "low": mid,
+                    "close": mid, "volume": 0,
+                }
+            else:
+                bar["high"] = max(bar["high"], mid)
+                bar["low"] = min(bar["low"], mid)
+                bar["close"] = mid
+    return [buckets[key] for key in sorted(buckets)], now_minute
+
+
 ALLOW_DASHBOARD_WITHOUT_ALPACA = (
     os.getenv("SCALPR_ALLOW_LOCAL_DASHBOARD", "").strip() == "1"
 )
@@ -258,6 +322,18 @@ class Guard:
         self.scope_version = cfg.get("scope_version", scope_policy.SCOPE_VERSION)
         self.entry_source = cfg.get("entry_source", "automated_or_legacy")
         self.ladder = sorted(cfg["ladder"], key=lambda r: r["at"])
+        self.runner_policy = runner_policy.normalize_config(cfg.get("runner_policy"))
+        self.runner_state = runner_policy.initial_state(self.runner_policy)
+        self.runner_lock = threading.Lock()
+        self.runner_underlying = None
+        self.runner_position_direction = None
+        if self.kind == "option":
+            try:
+                parsed = scope_policy.parse_occ(self.symbol)
+                self.runner_underlying = parsed["underlying"]
+                self.runner_position_direction = "CALL" if parsed["right"] == "C" else "PUT"
+            except scope_policy.ScopeError:
+                pass
         self.peak = 0.0
         self.peak_time = time.time()
         self.stall_seconds = cfg.get("stall_seconds", 0)
@@ -273,6 +349,17 @@ class Guard:
         self.done = False
         self.paused = False   # when True the ratchet does NOT fire exits (no protection)
         self.opened = datetime.now(timezone.utc).isoformat()
+        self.runner_measurement = (
+            runner_measurement.RunnerMeasurement(
+                symbol=self.symbol, kind=self.kind, entry_price=self.entry,
+                quantity=self.qty, opened_at=self.opened, ladder=self.ladder,
+                grace_seconds=self.grace_seconds, confirm_ticks=self.confirm_ticks,
+                stall_seconds=self.stall_seconds, stall_min_profit=self.stall_min_profit,
+                runner_policy=self.runner_policy,
+                position_direction=self.runner_position_direction,
+            )
+            if self.runner_policy.get("enabled") else None
+        )
         self.execution_lock = threading.Lock()
         self.climb = None
         self.climb_next_poll = 0.0
@@ -290,12 +377,68 @@ class Guard:
         self.opened_at = time.time()
         self.breach = 0
 
-    def tolerance(self):
+    def baseline_tolerance(self):
         tol = self.ladder[0]["tol"]
         for rung in self.ladder:
             if self.peak >= rung["at"]:
                 tol = rung["tol"]
         return tol
+
+    def tolerance(self):
+        baseline = self.baseline_tolerance()
+        with self.runner_lock:
+            return runner_policy.effective_tolerance(
+                self.runner_policy, self.runner_state, baseline, self.peak)
+
+    def update_runner_observation(self, observation):
+        """Apply a background-only regime/flow observation to this Guard."""
+        with self.runner_lock:
+            before_status = self.runner_state.get("status")
+            self.runner_state = runner_policy.apply_observation(
+                self.runner_policy,
+                self.runner_state,
+                observation,
+                self.runner_position_direction,
+                self.peak,
+            )
+            snapshot = runner_policy.snapshot(
+                self.runner_policy,
+                self.runner_state,
+                self.baseline_tolerance(),
+                self.peak,
+            )
+        if self.runner_measurement is not None:
+            self.runner_measurement.record_runner_transition(
+                before_status=before_status, after_snapshot=snapshot,
+                observation=observation,
+            )
+        return snapshot
+
+    def _record_runner_measurement_mark(self, price):
+        """Observe a confirmed mark without feeding any value back to the Guard."""
+        if self.runner_measurement is None:
+            return
+        try:
+            with self.runner_lock:
+                snapshot = runner_policy.snapshot(
+                    self.runner_policy, self.runner_state,
+                    self.baseline_tolerance(), self.peak)
+            self.runner_measurement.record_mark(price=price, runner_snapshot=snapshot)
+        except Exception:
+            # Measurement must not delay, change, or suppress an exit.
+            return
+
+    def finalize_runner_measurement(self, *, exit_price, exit_reason, exited_at=None):
+        """Persist a paired research outcome only after the position has closed."""
+        if self.runner_measurement is None:
+            return None
+        try:
+            return self.runner_measurement.finalize(
+                runner_exit_price=exit_price, exit_reason=exit_reason,
+                exited_at=exited_at,
+            )
+        except Exception:
+            return None
 
     def on_price(self, price):
         if price is None or float(price) <= 0:
@@ -306,6 +449,7 @@ class Guard:
         self.last_update = time.time()
         self.quote_status = "OK"
         self.quote_detail = None
+        self._record_runner_measurement_mark(price)
         if self.paused:            # guard disengaged: track price, never exit
             return None
         profit = (price - self.entry) / self.entry * 100
@@ -351,7 +495,11 @@ class Guard:
     def snapshot(self):
         executable = self.quote_status == "OK" and self.last_update is not None
         profit = ((self.last - self.entry) / self.entry * 100) if executable else None
+        baseline_tolerance = self.baseline_tolerance()
         tol = self.tolerance()
+        with self.runner_lock:
+            runner_snapshot = runner_policy.snapshot(
+                self.runner_policy, self.runner_state, baseline_tolerance, self.peak)
         return {
             "symbol": self.symbol, "type": self.kind, "entry": self.entry,
             "qty": self.qty, "last": self.last if executable else None,
@@ -385,6 +533,7 @@ class Guard:
                 "status": ("MASTER_FLAG_OFF" if self.cfg.get("climb_adds", {}).get("enabled")
                            else "DISABLED"),
             }),
+            "runner_policy": runner_snapshot,
         }
 
 
@@ -435,6 +584,7 @@ class AsymmetricHardStopGuard(Guard):
         self.quote_status = "OK"
         self.quote_detail = None
         self.hard_stop_quote_bad_since = None
+        self._record_runner_measurement_mark(price)
         profit = (price - self.entry) / self.entry * 100
         if profit > self.peak:
             self.peak, self.peak_time = profit, time.time()
@@ -674,6 +824,7 @@ class Platform:
 
     def open_trade(self, cfg, *, manual=False):
         request_id = str(cfg.pop("request_id", "") or uuid.uuid4())
+        entry_signals = cfg.pop("entry_signals", None)
         sym = cfg["symbol"].upper().strip()
         cfg["symbol"] = sym
         is_option = cfg.get("type", "stock") == "option"
@@ -712,6 +863,17 @@ class Platform:
             cfg["scope_class"] = manual_scope_policy.SCOPE_VALIDATED
             cfg["scope_version"] = scope_policy.SCOPE_VERSION
             cfg["entry_source"] = cfg.get("entry_source", "automated_or_legacy")
+        runner_raw = cfg.get("runner_policy")
+        configured_runner = runner_policy.normalize_config(runner_raw)
+        if isinstance(runner_raw, dict) and runner_raw.get("enabled"):
+            if not configured_runner["valid"]:
+                raise HTTPException(422, f"Invalid runner policy: {configured_runner['error']}")
+            if self.live:
+                raise HTTPException(422, "Regime-flow runner policy is physically blocked in live mode.")
+            if (cfg.get("hard_stop_mode") or cfg.get("type") != "option"
+                    or cfg["scope_class"] != manual_scope_policy.SCOPE_VALIDATED):
+                raise HTTPException(
+                    422, "Regime-flow runner policy is limited to validated SPY 0-2 DTE PAPER options.")
         climb_raw = cfg.get("climb_adds", {})
         if climb_raw.get("enabled"):
             if cfg["scope_class"] != manual_scope_policy.SCOPE_VALIDATED:
@@ -800,6 +962,7 @@ class Platform:
                     f"buying power; or the contract isn’t currently tradable (e.g. a 0DTE "
                     f"contract too close to expiration).")
             entry, qty = self._wait_fill(order.id)
+            filled_at = datetime.now(timezone.utc)
             log(f"{sym}: filled {qty} @ {entry}")
             self.health.record("execution", "FILLED",
                                fields={"symbol": sym, "side": "buy", "qty": qty, "price": entry,
@@ -820,12 +983,19 @@ class Platform:
         guard_cls = (AsymmetricHardStopGuard
                      if cfg.get("hard_stop_mode") == "asymmetric_hard_stop_v1"
                      else Guard)
-        guard = guard_cls(cfg, entry, qty, None)
+        guard = guard_cls(cfg, entry, qty, entry_signals)
         with LOCK:
             self.guards[sym] = guard
         cache = getattr(self, "dashboard_cache", None)
         if cache is not None:
             cache.invalidate("holdings")
+        if manual and cfg.get("buy", True):
+            self._capture_manual_discretionary_decision(
+                guard=guard,
+                fill_id=order.id,
+                entry_signals=entry_signals,
+                filled_at=filled_at,
+            )
         if guard.scope_class == manual_scope_policy.SCOPE_VALIDATED:
             self._start_entry_enrichment(guard)
         else:
@@ -834,6 +1004,129 @@ class Platform:
                 detail="manual out-of-envelope trade excluded from entry enrichment and cohorts",
                 fields={"symbol": sym, "scope_class": guard.scope_class}, force=True)
         return guard.snapshot()
+
+    def _capture_manual_discretionary_decision(
+        self, *, guard, fill_id, entry_signals, filled_at
+    ):
+        """Best-effort advisory capture after the filled position has a Guard."""
+        try:
+            import discretionary_override_log_v0 as override_log
+            from precheck import implied_direction, underlying_of
+
+            direction = implied_direction(guard.symbol, guard.kind)
+            snapshot = entry_signals if isinstance(entry_signals, dict) else None
+            if snapshot and (
+                snapshot.get("direction") != direction
+                or snapshot.get("symbol") != underlying_of(guard.symbol)
+            ):
+                snapshot = None
+            minute_bars, now_minute = _decision_time_spy_bars(filled_at)
+            capture_kwargs = {}
+            pool_path = getattr(self, "discretionary_override_pool_path", None)
+            if pool_path is not None:
+                capture_kwargs["pool_path"] = pool_path
+            row = override_log.capture_decision_record(
+                symbol=guard.symbol,
+                trade_type=guard.kind,
+                implied_direction=direction,
+                followed=_discretionary_followed(snapshot),
+                took=True,
+                precheck_snapshot=snapshot,
+                minute_bars=minute_bars,
+                now_minute=now_minute,
+                decided_at=filled_at,
+                operator_rationale=None,
+                decision_id=f"manual-fill:{fill_id}",
+                capture_origin="MANUAL_FILL_AUTO",
+                operator_driven=False,
+                analysis_role="PRIMARY",
+                **capture_kwargs,
+            )
+            self.health.record(
+                "discretionary_override_capture", "CAPTURED",
+                fields={"symbol": guard.symbol, "decision_id": row["decision_id"],
+                        "operator_action": row["operator_action"]},
+                force=True,
+            )
+            return row
+        except Exception as exc:
+            log(f"{guard.symbol}: discretionary override capture warning: {exc}")
+            try:
+                self.health.record(
+                    "discretionary_override_capture", "WARNING",
+                    detail=str(exc)[:200],
+                    fields={"symbol": guard.symbol, "fill_id": str(fill_id)},
+                    force=True,
+                )
+            except Exception:
+                pass
+            return None
+
+    def log_discretionary_skip(self, cfg):
+        """Record an explicit operator-driven secondary SKIPPED decision."""
+        request_id = str(cfg.get("request_id") or uuid.uuid4())
+        symbol = str(cfg.get("symbol") or "").upper().strip()
+        trade_type = str(cfg.get("type") or "option").lower()
+        try:
+            import discretionary_override_log_v0 as override_log
+            from precheck import implied_direction, underlying_of
+
+            if not symbol:
+                raise ValueError("symbol is required")
+            direction = implied_direction(symbol, trade_type)
+            snapshot = cfg.get("entry_signals")
+            snapshot = snapshot if isinstance(snapshot, dict) else None
+            if snapshot and (
+                snapshot.get("direction") != direction
+                or snapshot.get("symbol") != underlying_of(symbol)
+            ):
+                snapshot = None
+            decided_at = datetime.now(timezone.utc)
+            minute_bars, now_minute = _decision_time_spy_bars(decided_at)
+            capture_kwargs = {}
+            pool_path = getattr(self, "discretionary_override_pool_path", None)
+            if pool_path is not None:
+                capture_kwargs["pool_path"] = pool_path
+            row = override_log.capture_decision_record(
+                symbol=symbol,
+                trade_type=trade_type,
+                implied_direction=direction,
+                followed=_discretionary_followed(snapshot),
+                took=False,
+                precheck_snapshot=snapshot,
+                minute_bars=minute_bars,
+                now_minute=now_minute,
+                decided_at=decided_at,
+                operator_rationale=cfg.get("operator_rationale"),
+                decision_id=f"operator-skip:{request_id}",
+                capture_origin="OPERATOR_SKIP_CONTROL",
+                operator_driven=True,
+                analysis_role="SECONDARY",
+                **capture_kwargs,
+            )
+            self.health.record(
+                "discretionary_override_capture", "CAPTURED",
+                fields={"symbol": symbol, "decision_id": row["decision_id"],
+                        "operator_action": row["operator_action"]},
+                force=True,
+            )
+            return {"logged": True, "decision_id": row["decision_id"],
+                    "operator_action": row["operator_action"],
+                    "analysis_role": row["analysis_role"]}
+        except Exception as exc:
+            log(f"{symbol or 'skip'}: discretionary skip capture warning: {exc}")
+            try:
+                self.health.record(
+                    "discretionary_override_capture", "WARNING",
+                    detail=str(exc)[:200],
+                    fields={"symbol": symbol, "request_id": request_id,
+                            "operator_driven": True},
+                    force=True,
+                )
+            except Exception:
+                pass
+            return {"logged": False, "error": str(exc)[:200],
+                    "analysis_role": "SECONDARY"}
 
     def _start_entry_enrichment(self, guard):
         self._entry_enrichment_queue.put(guard)
@@ -905,6 +1198,10 @@ class Platform:
                 guard.done = False
                 return
         realized = (exit_price - guard.entry) / guard.entry * 100
+        guard.finalize_runner_measurement(
+            exit_price=exit_price, exit_reason=reason,
+            exited_at=datetime.now(timezone.utc),
+        )
         # Journal the confirmed exit immediately. Optional signal enrichment is
         # never allowed to stall the execution loop after a sell.
         self._journal(guard, exit_price, realized, reason, None)
@@ -1051,7 +1348,7 @@ class Platform:
 
     def _research_loop(self):
         """Bounded shadow work, physically separate from the execution loop."""
-        next_wave = next_incubation = 0.0
+        next_wave = next_incubation = next_runner = 0.0
         while True:
             now = time.time()
             try:
@@ -1079,7 +1376,69 @@ class Platform:
                 except Exception as e:
                     log(f"incubation observer tick skipped: {e}")
                 next_incubation = time.time() + 5.0
+            if now >= next_runner:
+                try:
+                    self._refresh_runner_policies()
+                except Exception as e:
+                    log(f"regime-flow runner refresh skipped: {e}")
+                next_runner = time.time() + runner_policy.REFRESH_INTERVAL_SECONDS
             time.sleep(0.5)
+
+    def _runner_observation(self, underlying):
+        """Classify the collector's causal snapshot outside the Guard quote loop."""
+        collector = getattr(self, "entry_bid_collector", None)
+        inputs = collector.regime_inputs_snapshot() if collector is not None else None
+        collector_symbol = str(
+            getattr(collector, "config", {}).get("symbol") or "").upper()
+        if not inputs or collector_symbol != str(underlying).upper():
+            regime_tag = regime_layer_v0.unknown_regime(
+                completed_bar_count=0,
+                reasons=[
+                    "runner_regime_inputs_unavailable" if not inputs
+                    else "runner_underlying_not_collector_symbol"
+                ],
+            )
+            observed_at = None
+        else:
+            regime_tag = regime_layer_v0.classify_regime(
+                minute_bars=inputs["minute_bars"],
+                now_minute=inputs["now_minute"],
+                prior_session_minute_bars=inputs["prior_session_minute_bars"],
+            )
+            observed_at = inputs.get("observed_at")
+        regime = runner_policy.regime_from_deterministic_tag(
+            regime_tag, observed_at=observed_at)
+        store = self.flow_store or InstitutionalFlowStore()
+        snapshot = store.latest_snapshot(ticker=underlying, window_minutes=5)
+        return {"regime": regime,
+                "flow": runner_policy.flow_from_institutional_snapshot(snapshot)}
+
+    def _refresh_runner_policies(self):
+        """Update eligible PAPER runners without ever delaying a Guard price cycle."""
+        with LOCK:
+            guards = [guard for guard in self.guards.values()
+                      if not guard.done and guard.runner_policy.get("enabled")]
+        observations = {}
+        for guard in guards:
+            underlying = guard.runner_underlying
+            if not underlying:
+                snapshot = guard.update_runner_observation({})
+            else:
+                if underlying not in observations:
+                    try:
+                        observations[underlying] = self._runner_observation(underlying)
+                    except Exception as exc:
+                        observations[underlying] = {"error": type(exc).__name__}
+                snapshot = guard.update_runner_observation(observations[underlying])
+            status = snapshot["status"]
+            self.health.record(
+                "regime_flow_runner",
+                "ACTIVE" if status == "ACTIVE" else "BASELINE",
+                detail=",".join(snapshot.get("reason_codes") or [])[:180],
+                fields={"symbol": guard.symbol, "runner_status": status,
+                        "effective_tolerance_pct": snapshot["effective_tolerance_pct"],
+                        "baseline_tolerance_pct": snapshot["baseline_tolerance_pct"]},
+            )
 
     def _provider_capture_loop(self):
         """Bounded vendor capture, isolated from Guard and order execution."""
@@ -1140,19 +1499,21 @@ class Platform:
             if (self.options_capture_running and schedule["ivol_eod_due"]
                     and market_date not in ivol_completed_dates and now >= next_ivol):
                 try:
-                    from options_capture_service import OptionsCaptureService
+                    from options_capture_service import (
+                        OptionsCaptureService, capture_result_disposition,
+                    )
                     service = OptionsCaptureService(self.options_client, self.options_store)
                     result = service.capture_eod(symbol="SPY", trade_date=market_date)
                     self.options_capture_last_result = {
                         **result, "trade_date": market_date,
                         "captured_at": datetime.now(timezone.utc).isoformat()}
                     source_status = result.get("source_status")
-                    if source_status == "pending":
-                        next_ivol = time.time() + 900.0
-                        status = "PENDING"
-                    else:
+                    disposition = capture_result_disposition(result)
+                    if disposition["complete"]:
                         ivol_completed_dates.add(market_date)
-                        status = "OK" if result.get("promoted") else "DEGRADED"
+                    else:
+                        next_ivol = time.time() + disposition["retry_seconds"]
+                    status = disposition["health_status"]
                     self.health.record("options_capture", status,
                                        detail=result.get("reason"), fields={
                                            "trade_date": market_date,
@@ -1411,13 +1772,35 @@ class Platform:
             return []
         self._last_open_symbols = set(open_symbols)
         retired = []
+        retired_guards = []
         with LOCK:
             for symbol, guard in self.guards.items():
                 if not guard.done and symbol not in open_symbols:
                     guard.done = True
                     retired.append(symbol)
-        for symbol in retired:
-            log(f"{symbol}: orphan guard retired after broker confirmed no open position")
+                    retired_guards.append(guard)
+        for guard in retired_guards:
+            log(f"{guard.symbol}: orphan guard retired after broker confirmed no open position")
+            guard.finalize_runner_measurement(
+                exit_price=None,
+                exit_reason="BROKER_RECONCILIATION_EXTERNAL_EXIT",
+                exited_at=datetime.now(timezone.utc),
+            )
+            # A broker-side/manual exit bypasses Platform.sell(). Preserve that
+            # fact in the isolated shadow study without inventing an exit price.
+            trade_id = getattr(guard, "incubation_trade_id", None)
+            if not trade_id:
+                continue
+            try:
+                import incubation_server
+                incubation_server.mark_live_exit(
+                    trade_id,
+                    "BROKER_RECONCILIATION_EXTERNAL_EXIT",
+                    None,
+                    initiated_by="broker_reconciliation",
+                )
+            except Exception as exc:
+                log(f"{guard.symbol}: incubation reconciliation marker skipped: {exc}")
         self.health.record("guard_reconciliation", "OK",
                            fields={"retired": retired, "open_position_count": len(open_symbols)},
                            force=bool(retired))
@@ -1608,6 +1991,16 @@ class Platform:
                                 f"retries={s['retries']} errors={s['errors']}")
                         except Exception as e:
                             log(f"intel label lifecycle failed: {e}")
+                        # A2 is a separate underlying-return research basis.
+                        # It is idempotent and never reaches admission or Guard code.
+                        try:
+                            import a2_measurement as _a2
+                            summary = _a2.materialize_a2()
+                            log("A2 measurement materialized: "
+                                f"clean_labelable={summary['clean_a2_labelable_episode_count']} "
+                                f"appended={summary['records_appended']}")
+                        except Exception as e:
+                            log(f"A2 measurement materialization failed: {e}")
             except Exception as e:
                 log(f"shadow loop error: {e}")
             time.sleep(120)   # tighter cadence so the pre-open window isn't missed
@@ -2305,6 +2698,12 @@ def create_trade(cfg: dict):
     return platform.open_trade(dict(cfg), manual=True)
 
 
+@app.post("/api/discretionary-override/skip")
+def log_discretionary_skip(cfg: dict):
+    """Operator-explicit secondary research capture; never submits an order."""
+    return platform.log_discretionary_skip(dict(cfg))
+
+
 @app.get("/api/option/expirations")
 def option_expirations(underlying: str, type: str = "C"):
     try:
@@ -2463,6 +2862,8 @@ def options_intelligence_status():
         "provider": provider,
         "store": (store or OptionsFeatureStore()).status(),
         "capture_running": running,
+        "completion_policy": "PROMOTED_NONEMPTY_ONLY",
+        "empty_capture_retry_seconds": 900,
         "last_capture": getattr(platform, "options_capture_last_result", None),
         "execution_authority": False,
     }
@@ -2499,6 +2900,7 @@ def cloudsql_status():
             "status": "NOT_STARTED"}
     except (OSError, json.JSONDecodeError):
         mirror = {"status": "UNREADABLE"}
+    mirror = _cloudsql_status_with_freshness(mirror)
     return {
         "configured": profile.exists(),
         "worker_running": bool(
@@ -2509,6 +2911,28 @@ def cloudsql_status():
         "local_files_authoritative": True,
         "execution_authority": False,
     }
+
+
+def _cloudsql_status_with_freshness(mirror, *, now=None, stale_seconds=120.0):
+    """Fail closed instead of presenting an old no-backlog result as current."""
+    result = dict(mirror or {})
+    updated_at = result.get("updated_at")
+    try:
+        updated = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        current = now or datetime.now(timezone.utc)
+        age_seconds = max(0.0, (current - updated).total_seconds())
+    except (TypeError, ValueError):
+        age_seconds = None
+    fresh = age_seconds is not None and age_seconds <= float(stale_seconds)
+    result["fresh"] = fresh
+    result["age_seconds"] = round(age_seconds, 3) if age_seconds is not None else None
+    if not fresh:
+        result["reported_status"] = result.get("status")
+        result["status"] = "STALE"
+        result["backlog_remaining"] = None
+    return result
 
 
 @app.post("/api/holdings/{symbol}/liquidate")

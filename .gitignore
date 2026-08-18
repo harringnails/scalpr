@@ -38,6 +38,7 @@ guard_events_v0.jsonl
 runtime_health_v1.jsonl
 wave_*_v0.jsonl
 directional_shadow_v0.jsonl
+regime_flow_runner_shadow_v0.jsonl
 v2_data/
 runs/
 incubation_trades/

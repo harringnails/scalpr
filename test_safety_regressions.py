@@ -1,6 +1,7 @@
 """Network-free regressions for the 2026-08-05 Guard/UI incidents."""
 
 import inspect
+import math
 import os
 from datetime import datetime, time as datetime_time, timezone
 
@@ -148,6 +149,30 @@ def test_asymmetric_hard_stop_requires_two_fresh_ticks_below_cap():
         ss.time.time = original_time
 
 
+def test_runner_measurement_wrapper_preserves_asymmetric_loss_cap():
+    sym = symbol_today()
+    bare = ss.AsymmetricHardStopGuard(hard_stop_cfg(sym), 1.0, 2)
+    wrapped_cfg = hard_stop_cfg(sym)
+    wrapped_cfg["runner_policy"] = {
+        "enabled": True,
+        "version": "regime-flow-runner-v1",
+        "confirm_observations": 1,
+    }
+    wrapped = ss.AsymmetricHardStopGuard(wrapped_cfg, 1.0, 2)
+    original_time = ss.time.time
+    try:
+        now = [1500.0]
+        ss.time.time = lambda: now[0]
+        bare.opened_at = wrapped.opened_at = now[0] - 1.0
+        for price in (1.00, 0.74, 0.72):
+            assert bare.on_price(price) == wrapped.on_price(price)
+            now[0] += 1.0
+        assert wrapped.runner_measurement is not None
+        assert "hard-stop: loss cap" in wrapped.on_price(0.72)
+    finally:
+        ss.time.time = original_time
+
+
 def test_asymmetric_hard_stop_exits_after_sustained_bad_quotes():
     sym = symbol_today()
     guard = ss.AsymmetricHardStopGuard(hard_stop_cfg(sym), 1.0, 2)
@@ -245,6 +270,81 @@ def hard_stop_cfg(symbol, qty=2):
     return spec
 
 
+def runner_observation(*, flow_direction="BULLISH"):
+    observed = datetime.now(timezone.utc).isoformat()
+    return {
+        "regime": {
+            "schema_version": ss.runner_policy.REGIME_SOURCE_VERSION,
+            "available": True,
+            "status": "FRESH",
+            "state": "TREND_UP",
+            "metadata": {"fit_end_time": observed},
+        },
+        "flow": {
+            "as_of": observed,
+            "fresh": True,
+            "tier": "GREEN",
+            "direction": flow_direction,
+        },
+    }
+
+
+def test_runner_observation_uses_cached_deterministic_regime_inputs():
+    observed = datetime.now(timezone.utc).isoformat()
+
+    class Collector:
+        config = {"symbol": "SPY"}
+
+        @staticmethod
+        def regime_inputs_snapshot():
+            return {
+                "minute_bars": [{"t": 0, "close": 100.0}],
+                "now_minute": 5,
+                "prior_session_minute_bars": [[{"t": 0, "close": 99.0}]],
+                "observed_at": observed,
+            }
+
+    class FlowStore:
+        @staticmethod
+        def latest_snapshot(**_kwargs):
+            return {
+                "institutional_flow_status": "AVAILABLE",
+                "window_end": observed,
+                "event_count": 3,
+                "flow_direction_score": 1.0,
+            }
+
+    platform = object.__new__(ss.Platform)
+    platform.entry_bid_collector = Collector()
+    platform.flow_store = FlowStore()
+    calls = []
+    original = ss.regime_layer_v0.classify_regime
+    try:
+        def classify(**kwargs):
+            calls.append(kwargs)
+            return {
+                "schema_version": ss.runner_policy.REGIME_SOURCE_VERSION,
+                "status": "FRESH", "state": "TREND_UP",
+                "as_of_completed_bucket": 0,
+                "execution_authority": False,
+            }
+
+        ss.regime_layer_v0.classify_regime = classify
+        result = platform._runner_observation("SPY")
+    finally:
+        ss.regime_layer_v0.classify_regime = original
+
+    assert calls == [{
+        "minute_bars": [{"t": 0, "close": 100.0}],
+        "now_minute": 5,
+        "prior_session_minute_bars": [[{"t": 0, "close": 99.0}]],
+    }]
+    assert result["regime"]["available"] is True
+    assert result["regime"]["metadata"]["fit_end_time"] == observed
+    assert result["regime"]["metadata"]["source"] == "regime_layer_v0.classify_regime"
+    assert "regime_model" not in inspect.getsource(ss.Platform._runner_observation)
+
+
 def platform(symbol, qty=0):
     p = object.__new__(ss.Platform)
     p.live = False
@@ -277,6 +377,27 @@ def test_open_trade_routes_to_asymmetric_hard_stop_guard_when_configured():
     assert guard.__class__.__name__ == "AsymmetricHardStopGuard"
     assert result["risk_mode"] == "asymmetric_hard_stop_v1"
     assert result["hard_stop_loss_pct"] == 25
+
+
+def test_runner_policy_is_opt_in_and_reverts_to_static_ladder_on_conflict():
+    sym = symbol_today()
+    regular = ss.Guard(cfg(sym), 1.0, 2)
+    regular.on_price(1.20)
+    assert regular.tolerance() == 6
+    runner_cfg = cfg(sym)
+    runner_cfg["runner_policy"] = {
+        "enabled": True,
+        "version": "regime-flow-runner-v1",
+        "confirm_observations": 1,
+    }
+    guarded = ss.Guard(runner_cfg, 1.0, 2)
+    guarded.on_price(1.20)
+    guarded.update_runner_observation(runner_observation())
+    assert guarded.snapshot()["runner_policy"]["status"] == "ACTIVE"
+    assert math.isclose(guarded.tolerance(), 10)
+    guarded.update_runner_observation(runner_observation(flow_direction="BEARISH"))
+    assert guarded.snapshot()["runner_policy"]["status"] == "BASELINE"
+    assert guarded.tolerance() == 6
 
 
 def test_duplicate_entry_is_blocked_and_audited_without_broker_order():
@@ -331,6 +452,43 @@ def test_restart_requires_direct_flat_account_and_open_order_proof():
     assert 'proof.get("positions_count") == 0' in source
     assert 'proof.get("open_orders_count") == 0' in source
     assert 'proof.get("mode") == "paper"' in source
+
+
+def test_cron_restart_has_safe_proof_and_runtime_flag_parity():
+    source = open("restart_cron.sh", encoding="utf-8").read()
+    assert "/api/account-flat-proof" in source
+    assert "/api/holdings" not in source
+    assert 'proof.get("positions_count") == 0' in source
+    assert 'proof.get("open_orders_count") == 0' in source
+    assert 'proof.get("mode") == "paper"' in source
+    for flag in (
+        "WAVE_RIDING_ENABLED=1",
+        "INCUBATION_SHADOW_ENABLED=1",
+        "SCALPR_UW_INGESTION_ENABLED=1",
+        "SCALPR_IVOL_CAPTURE_ENABLED=1",
+        "SCALPR_CLOUDSQL_MIRROR_ENABLED=1",
+        "ENTRY_INTEL_BID_CAPTURE_ENABLED=1",
+        "EXPLAIN_LAYER_ENABLED=0",
+    ):
+        assert flag in source
+    assert 'status.get("collector_version") == "entry-bid-collector-v1.2"' in source
+    assert 'status.get("collection_role") == "PRELOCK_DRY_RUN"' in source
+    assert 'status.get("cohorts_locked") is False' in source
+    assert 'status.get("execution_authority") is False' in source
+    assert 'status.get("guard_access") is False' in source
+
+
+def test_cloudsql_stale_status_never_reports_no_backlog():
+    now = datetime(2026, 8, 13, 23, 0, tzinfo=timezone.utc)
+    result = ss._cloudsql_status_with_freshness({
+        "status": "OK",
+        "updated_at": "2026-08-12T23:00:00+00:00",
+        "backlog_remaining": False,
+    }, now=now)
+    assert result["status"] == "STALE"
+    assert result["reported_status"] == "OK"
+    assert result["fresh"] is False
+    assert result["backlog_remaining"] is None
 
 
 def test_resume_fails_closed_without_typed_symbol_and_records_confirmed_resume():

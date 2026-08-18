@@ -102,3 +102,26 @@ if [ "$SCALPR_ALPACA_SECRET_KEYCHAIN_STATUS" = "missing" ] && [ -n "$SCALPR_ALPA
 fi
 
 unset SCALPR_ALPACA_SECRET_EXISTING_ENV
+
+# A launchd-managed session can carry credentials even when a fresh Terminal
+# does not inherit them. Use that source only after Keychain and the process
+# environment have both been exhausted; never print or persist the values.
+if command -v launchctl >/dev/null 2>&1; then
+  if [ "$SCALPR_ALPACA_KEY_KEYCHAIN_STATUS" = "missing" ]; then
+    SCALPR_ALPACA_KEY_LAUNCHD_VALUE="$(launchctl getenv ALPACA_API_KEY 2>/dev/null || true)"
+    if [ -n "$SCALPR_ALPACA_KEY_LAUNCHD_VALUE" ]; then
+      export ALPACA_API_KEY="$SCALPR_ALPACA_KEY_LAUNCHD_VALUE"
+      SCALPR_ALPACA_KEY_KEYCHAIN_STATUS="launchctl"
+    fi
+    unset SCALPR_ALPACA_KEY_LAUNCHD_VALUE
+  fi
+
+  if [ "$SCALPR_ALPACA_SECRET_KEYCHAIN_STATUS" = "missing" ]; then
+    SCALPR_ALPACA_SECRET_LAUNCHD_VALUE="$(launchctl getenv ALPACA_SECRET_KEY 2>/dev/null || true)"
+    if [ -n "$SCALPR_ALPACA_SECRET_LAUNCHD_VALUE" ]; then
+      export ALPACA_SECRET_KEY="$SCALPR_ALPACA_SECRET_LAUNCHD_VALUE"
+      SCALPR_ALPACA_SECRET_KEYCHAIN_STATUS="launchctl"
+    fi
+    unset SCALPR_ALPACA_SECRET_LAUNCHD_VALUE
+  fi
+fi

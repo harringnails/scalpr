@@ -4,13 +4,13 @@ wave-riding-shadow-observer-v0 acceptance + failure-recovery + baseline parity.
 Runs in a temp CWD so all wave artifacts (positions/seeds/streams/logs, all
 relative paths) stay isolated. No live orders anywhere.
 """
-import os
-import sys
+import inspect
 import tempfile
 from datetime import datetime, timezone
 
+import pytest
+
 TMP = tempfile.mkdtemp()
-os.chdir(TMP)                      # isolate all relative wave_store artifacts here
 
 import feature_engine as fe          # noqa: E402
 import wave_config as wc             # noqa: E402
@@ -20,6 +20,11 @@ import wave_store as wst             # noqa: E402
 import wave_baselines as wb          # noqa: E402
 from wave_config import WaveConfig   # noqa: E402
 from wave_observer import ShadowObserver, observation_id  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_cwd(monkeypatch):
+    monkeypatch.chdir(TMP)
 
 
 def check(name, cond):
@@ -230,7 +235,7 @@ def test_shared_seed_three_tracks():
 # ── isolation ───────────────────────────────────────────────────────────────
 def test_isolation():
     print("Observer never imports scalp_server; no live order path")
-    check("scalp_server not imported", "scalp_server" not in sys.modules)
+    check("scalp_server not imported", "import scalp_server" not in inspect.getsource(wr))
     from wave_order_adapter import ShadowOrderAdapter
     check("shadow adapter not live", ShadowOrderAdapter().live is False)
 

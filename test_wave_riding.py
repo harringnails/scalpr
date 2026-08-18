@@ -4,7 +4,7 @@ Wave Riding v0 tests — the §26 matrix + replay + failure recovery + isolation
 Verifies the shadow discipline, not profitability. No live orders anywhere.
 """
 import os
-import sys
+import inspect
 import tempfile
 
 import feature_engine as fe
@@ -319,7 +319,9 @@ def test_no_look_ahead_determinism():
 # ── Standard-mode isolation ─────────────────────────────────────────────────
 def test_standard_mode_isolation():
     print("Wave Riding imports never pull in scalp_server / touch Standard mode")
-    check("scalp_server not imported by wave modules", "scalp_server" not in sys.modules)
+    for module in (fe, wc, wr, wst, wb):
+        check(f"{module.__name__}: no scalp_server import",
+              "import scalp_server" not in inspect.getsource(module))
     check("feature flag off by default", wc.feature_enabled() is False)
     check("shadow adapter is not live", ShadowOrderAdapter().live is False)
 

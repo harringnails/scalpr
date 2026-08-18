@@ -112,6 +112,7 @@ def platform(symbol, **trading_kwargs):
     p.trading = FakeTrading(symbol, **trading_kwargs)
     p.health = Health()
     p.dashboard_cache = Cache()
+    p._capture_manual_discretionary_decision = lambda **_kwargs: None
     return p
 
 

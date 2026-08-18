@@ -19,7 +19,9 @@ import entry_episode_research_v1 as episode_research
 import entry_intelligence_v1 as intelligence
 import decision_replay_v1 as replay
 import entry_contract_data_v1 as contract_data
+import entry_episode_integrity_v1 as episode_integrity
 import feature_engine as fe
+import regime_layer_v0
 import scalpr_config
 
 
@@ -132,6 +134,8 @@ class EntryBidCollector:
         self.status_path = ROOT / collector["status_log"]
         self.decision_path = ROOT / collector["decision_log"]
         self.episode_path = ROOT / collector["episode_log"]
+        self.episode_quarantine_path = ROOT / episode_integrity.DEFAULT_QUARANTINE_MANIFEST
+        self.integrity_event_path = ROOT / episode_integrity.DEFAULT_INTEGRITY_EVENT_LOG
         self.bid_path = ROOT / collector["bid_log"]
         self.outcome_path = ROOT / collector["outcome_log"]
         self.gate_result_path = ROOT / collector["gate_result_log"]
@@ -146,6 +150,10 @@ class EntryBidCollector:
         self.universe_refresh_attempt_date = None
         self.universe_refresh_attempt_at = None
         self.universe_refresh_error = None
+        self.regime_prior_session_date = None
+        self.regime_prior_session_bars: list[list[dict]] = []
+        self.regime_prior_session_error = None
+        self.latest_regime_inputs: dict | None = None
         self.last_universe_as_of = None
         self.active: dict[str, dict] = {}
         self.active_hypothetical: dict[str, dict] = {}
@@ -200,6 +208,10 @@ class EntryBidCollector:
 
     def public_status(self) -> dict:
         return deepcopy(self.status)
+
+    def regime_inputs_snapshot(self) -> dict | None:
+        """Return the latest causal inputs without another provider read."""
+        return deepcopy(self.latest_regime_inputs)
 
     def _recover_active(self) -> None:
         decisions = {
@@ -347,6 +359,8 @@ class EntryBidCollector:
         from zoneinfo import ZoneInfo
         et = ZoneInfo("America/New_York")
         market_date = session_open_et.astimezone(et).date()
+        prior_regime_sessions = self._regime_prior_sessions(
+            market_date=market_date, session_open_utc=open_utc, feed=feed, et=et)
         daily_request = StockBarsRequest(
             symbol_or_symbols=symbol, timeframe=TimeFrame.Day,
             start=now - timedelta(days=14), end=now + timedelta(minutes=1), feed=feed)
@@ -370,8 +384,51 @@ class EntryBidCollector:
             "underlying_observed_at": bars[-1].get("observed_at") if bars else None,
             "underlying_received_at": now.isoformat(),
             "underlying_source": f"alpaca_stock_bars:{self.feed}",
+            "regime_prior_session_minute_bars": prior_regime_sessions,
+            "regime_prior_session_error": self.regime_prior_session_error,
         }
         return bars, context
+
+    def _regime_prior_sessions(self, *, market_date, session_open_utc: datetime,
+                               feed, et) -> list[list[dict]]:
+        """Cache prior RTH bars for advisory ATR percentile history only."""
+        if self.regime_prior_session_date == market_date:
+            return self.regime_prior_session_bars
+        self.regime_prior_session_date = market_date
+        self.regime_prior_session_bars = []
+        self.regime_prior_session_error = None
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+
+            start_et = datetime.combine(
+                market_date - timedelta(days=10), wall_time(9, 30), tzinfo=et)
+            request = StockBarsRequest(
+                symbol_or_symbols=self.config["symbol"], timeframe=TimeFrame.Minute,
+                start=start_et.astimezone(timezone.utc), end=session_open_utc, feed=feed)
+            raw = self.stock_data.get_stock_bars(request).data.get(self.config["symbol"]) or []
+            sessions: dict[str, list[dict]] = {}
+            for bar in raw:
+                stamp = bar.timestamp.astimezone(et)
+                session_date = stamp.date()
+                if session_date >= market_date or session_date.weekday() >= 5:
+                    continue
+                minute = int((stamp - datetime.combine(
+                    session_date, wall_time(9, 30), tzinfo=et)).total_seconds() // 60)
+                if not 0 <= minute < 390:
+                    continue
+                sessions.setdefault(session_date.isoformat(), []).append({
+                    "t": minute, "open": float(bar.open), "high": float(bar.high),
+                    "low": float(bar.low), "close": float(bar.close),
+                    "volume": float(getattr(bar, "volume", 0) or 0),
+                })
+            self.regime_prior_session_bars = [
+                sorted(session, key=lambda row: row["t"])
+                for _date, session in sorted(sessions.items())
+            ]
+        except Exception as exc:
+            self.regime_prior_session_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+        return self.regime_prior_session_bars
 
     def _live_contracts(self, *, side: str, market_date: str, received_at: datetime,
                         underlying_spot: float | None = None,
@@ -439,6 +496,30 @@ class EntryBidCollector:
         bars, context = self._underlying_inputs(
             session_open_et=session_open_et, session_close_et=session_close_et, now=now)
         now_minute = int((now - session_open_et.astimezone(timezone.utc)).total_seconds() // 60)
+        # Publish one immutable snapshot for other research consumers. The
+        # runner reclassifies it directly instead of invoking the legacy HMM
+        # or duplicating the collector's provider calls.
+        self.latest_regime_inputs = {
+            "minute_bars": deepcopy(bars),
+            "now_minute": now_minute,
+            "prior_session_minute_bars": deepcopy(
+                context.get("regime_prior_session_minute_bars") or []),
+            "observed_at": bars[-1].get("observed_at") if bars else None,
+        }
+        try:
+            regime_tag = regime_layer_v0.classify_regime(
+                minute_bars=bars, now_minute=now_minute,
+                prior_session_minute_bars=context.get(
+                    "regime_prior_session_minute_bars"),
+            )
+        except Exception as exc:
+            # Advisory instrumentation must never become an admission gate.
+            regime_tag = regime_layer_v0.unknown_regime(
+                completed_bar_count=0,
+                reasons=[f"regime_classifier_error:{type(exc).__name__}"],
+            )
+        setups = {}
+        provisionals = {}
         for side in ("CALL", "PUT"):
             setup = intelligence.evaluate_reversal_setup(
                 symbol=self.config["symbol"], side=side, minute_bars=bars,
@@ -455,12 +536,44 @@ class EntryBidCollector:
                 observed_at=now, decided_at=now,
                 config_version=self.config["config_version"],
                 config_hash=self.config["config_hash"])
-            admission = None
-            has_qualified_reversal = (
-                setup.get("status") == "FRESH"
-                and bool(setup.get("qualified"))
-                and setup.get("reference_extreme_bucket") is not None
+            setups[side] = setup
+            provisionals[side] = provisional
+
+        qualified_sides = {
+            side for side, setup in setups.items()
+            if episode_integrity.has_qualified_reversal(setup)
+        }
+        if qualified_sides == {"CALL", "PUT"}:
+            candidates = [
+                {
+                    "config_version": self.config["config_version"],
+                    "config_hash": self.config["config_hash"],
+                    "episode_key": provisionals[side].episode_key,
+                    "decision_id": provisionals[side].decision_id,
+                    "cohort_id": provisionals[side].cohort_id,
+                    "symbol": provisionals[side].symbol,
+                    "side": side,
+                    "session_date": session_open_et.date().isoformat(),
+                    "decided_at": now.isoformat(),
+                    "episode_kind": "REVERSAL_CANDIDATE",
+                    "admitted": False,
+                    "regime_tag": regime_tag,
+                }
+                for side in ("CALL", "PUT")
+            ]
+            episode_integrity.quarantine_cross_side_double_qualification(
+                candidates,
+                quarantine_path=self.episode_quarantine_path,
+                integrity_event_path=self.integrity_event_path,
+                detected_at=now,
+                source_collector_version=COLLECTOR_VERSION,
             )
+
+        for side in ("CALL", "PUT"):
+            setup = setups[side]
+            provisional = provisionals[side]
+            admission = None
+            has_qualified_reversal = episode_integrity.has_qualified_reversal(setup)
             if has_qualified_reversal:
                 candidate = {
                     "config_version": self.config["config_version"],
@@ -472,6 +585,7 @@ class EntryBidCollector:
                     "session_date": session_open_et.date().isoformat(),
                     "decided_at": now.isoformat(),
                     "episode_kind": "REVERSAL_CANDIDATE",
+                    "regime_tag": regime_tag,
                 }
                 admission = episode_research.admit_episode(
                     candidate, existing=list(fe._iter_jsonl(self.episode_path)),

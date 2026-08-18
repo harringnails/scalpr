@@ -8,6 +8,26 @@ from options_intelligence import (
 )
 
 
+def capture_result_disposition(result: dict) -> dict:
+    """Classify a capture result without treating an empty pull as complete."""
+    source_status = str(result.get("source_status") or "unknown").lower()
+    try:
+        contract_count = int(result.get("contract_count") or 0)
+    except (TypeError, ValueError):
+        contract_count = 0
+    promoted = result.get("promoted") is True
+
+    if source_status == "pending":
+        return {"complete": False, "health_status": "PENDING", "retry_seconds": 900.0}
+    if promoted and contract_count > 0:
+        return {
+            "complete": True,
+            "health_status": "OK" if source_status == "ready" else "DEGRADED",
+            "retry_seconds": None,
+        }
+    return {"complete": False, "health_status": "DEGRADED", "retry_seconds": 900.0}
+
+
 class OptionsCaptureService:
     def __init__(self, client, store, *, clock=utc_now):
         self.client = client

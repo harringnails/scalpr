@@ -188,6 +188,22 @@ def test_store_has_required_tables_and_deduplicates():
         }
 
 
+def test_store_returns_latest_snapshot_for_requested_window():
+    with TemporaryDirectory() as directory:
+        store = InstitutionalFlowStore(Path(directory) / "flow.db")
+        event = normalize_unusual_whales_alert(alert(), received_at=NOW)
+        first = aggregate_flow_events([event], ticker="SPY", window_minutes=5, window_end=NOW)
+        latest = aggregate_flow_events([event], ticker="SPY", window_minutes=5,
+                                       window_end=NOW + timedelta(minutes=1))
+        other = aggregate_flow_events([event], ticker="SPY", window_minutes=1,
+                                      window_end=NOW + timedelta(minutes=1))
+        assert store.append_snapshot(first) is True
+        assert store.append_snapshot(other) is True
+        assert store.append_snapshot(latest) is True
+        assert store.latest_snapshot(ticker="SPY", window_minutes=5).window_end == latest.window_end
+        assert store.latest_snapshot(ticker="SPY", window_minutes=1).window_end == other.window_end
+
+
 def test_one_shot_ingestion_persists_events_snapshots_and_health():
     session = Session([Response({"data": [alert()]})])
     with TemporaryDirectory() as directory:

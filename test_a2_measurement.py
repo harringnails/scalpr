@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 
 import a2_measurement as a2
 
@@ -19,6 +20,12 @@ def _episode(side="CALL", key="e1"):
         "session_date": "2026-08-11",
         "decided_at": BASE.isoformat(),
         "admitted": True,
+        "regime_tag": {
+            "schema_version": "deterministic-regime-layer-v0",
+            "state": "TREND_UP",
+            "advisory_only": True,
+            "admission_gate": False,
+        },
     }
 
 
@@ -45,9 +52,12 @@ def test_label_episode_signs_call_returns_and_stamps_provenance():
         _episode(), session_quotes=_complete_quotes({5: 101.0, 15: 102.0, 30: 103.0, 60: 104.0})
     )
     assert labeled["label_status"] == "AVAILABLE"
+    assert labeled["a2_outcome_status"] == "A2-AVAILABLE"
     assert labeled["setup_direction_sign"] == 1
     assert labeled["signed_return_60m"] > 0
     assert labeled["config_hash"] == "frozen-config-hash"
+    assert labeled["regime_tag"]["state"] == "TREND_UP"
+    assert labeled["regime_tag"]["admission_gate"] is False
     assert labeled["anchor_provider_ts"] < labeled["decided_at"]
     assert labeled["endpoint_provider_ts"]["60m"] is not None
 
@@ -66,6 +76,7 @@ def test_missing_endpoint_is_unavailable_not_zero():
         _episode(), session_quotes=_complete_quotes({5: 101.0, 15: 102.0, 30: 103.0})
     )
     assert labeled["label_status"] == "UNAVAILABLE"
+    assert labeled["a2_outcome_status"] == "A2-UNAVAILABLE"
     assert labeled["signed_return_60m"] is None
     assert "missing_endpoint_60m_within_5s" in labeled["missing_reason"]
 
@@ -83,12 +94,58 @@ def test_episode_key_deduplication_preserves_one_observation():
     assert duplicates == 1
 
 
+def test_quarantine_manifest_excludes_episode_with_recorded_reason(tmp_path):
+    episodes = tmp_path / "episodes.jsonl"
+    quarantine = tmp_path / "quarantine.jsonl"
+    episode = _episode(key="quarantined")
+    episodes.write_text(json.dumps(episode) + "\n")
+    quarantine.write_text(json.dumps({
+        "record_type": "QUARANTINE_ENTRY",
+        "episode_record_id": episode["episode_record_id"],
+        "quarantine_status": "QUARANTINED_PREFIX_ADMISSION",
+        "exclusion_reasons": ["QUARANTINED_PREFIX_ADMISSION"],
+    }) + "\n")
+
+    assert a2.load_episodes(episodes, quarantine_path=quarantine) == []
+    assert a2.load_episodes(
+        episodes, quarantine_path=quarantine, exclude_quarantined=False
+    ) == [episode]
+
+
 def test_cross_side_timestamp_collision_is_reported_as_an_integrity_failure():
     put = _episode("PUT", key="put")
     summary = a2.summarize_a2([], episodes=[_episode("CALL", key="call"), put])
     assert summary["n_cross_side_timestamp_collision_groups"] == 1
     assert summary["data_integrity_status"] == "FAIL_CROSS_SIDE_TIMESTAMP_COLLISIONS"
     assert summary["phase4_preflight"] == "BLOCKED_BY_CROSS_SIDE_COLLISIONS"
+
+
+def test_clean_a2_accrual_excludes_collision_rows_before_labeling():
+    clean = _episode("CALL", key="clean")
+    collision_call = _episode("CALL", key="collision-call")
+    collision_put = _episode("PUT", key="collision-put")
+    collision_call["decided_at"] = (BASE + timedelta(minutes=1)).isoformat()
+    collision_put["decided_at"] = collision_call["decided_at"]
+
+    eligible, duplicates, collisions, excluded = a2.clean_a2_episodes(
+        [clean, collision_call, collision_put])
+
+    assert duplicates == 0
+    assert [episode["episode_key"] for episode in eligible] == ["clean"]
+    assert len(collisions) == 1
+    assert excluded == 2
+
+
+def test_a2_label_does_not_require_an_option_contract():
+    episode = _episode()
+    episode["selected_contract"] = None
+
+    labeled = a2.label_episode(
+        episode, session_quotes=_complete_quotes(
+            {5: 101.0, 15: 102.0, 30: 103.0, 60: 104.0}))
+
+    assert labeled["a2_outcome_status"] == "A2-AVAILABLE"
+    assert labeled["signed_return_60m"] is not None
 
 
 def test_measurement_summary_flags_underpowered_when_needed():
@@ -106,5 +163,7 @@ if __name__ == "__main__":
     test_anchor_never_uses_a_future_quote()
     test_episode_key_deduplication_preserves_one_observation()
     test_cross_side_timestamp_collision_is_reported_as_an_integrity_failure()
+    test_clean_a2_accrual_excludes_collision_rows_before_labeling()
+    test_a2_label_does_not_require_an_option_contract()
     test_measurement_summary_flags_underpowered_when_needed()
     print("ALL A2 MEASUREMENT TESTS PASSED")
