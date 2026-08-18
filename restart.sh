@@ -129,20 +129,70 @@ fi
 SERVER_PID=$!
 echo "Scalpr server launch requested (pid $SERVER_PID)."
 
+HEARTBEAT_1=""
+HEARTBEAT_2=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if lsof -tiTCP:8420 -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Scalpr PAPER server is listening on http://127.0.0.1:8420."
-    echo "Server log: $SERVER_LOG"
-    exit 0
-  fi
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "Scalpr server exited during startup. Recent error output:"
     tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
     exit 1
   fi
+  LIVE_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/live 2>/dev/null || true)
+  READY_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/ready 2>/dev/null || true)
+  HEARTBEAT_1=$(printf '%s' "$LIVE_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("heartbeat_at") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+  READY_STATUS=$(printf '%s' "$READY_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+    print(payload.get("status") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+  if [ "$READY_STATUS" = "READY" ]; then
+    sleep 1
+    LIVE_PAYLOAD_2=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/live 2>/dev/null || true)
+    HEARTBEAT_2=$(printf '%s' "$LIVE_PAYLOAD_2" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("heartbeat_at") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+    if [ -n "$HEARTBEAT_1" ] && [ "$HEARTBEAT_1" != "$HEARTBEAT_2" ]; then
+      ACCOUNT_PROOF=$(curl -fsS --max-time 4 \
+        http://127.0.0.1:8420/api/account-flat-proof 2>/dev/null || true)
+      FLAT_READY=$(printf '%s' "$ACCOUNT_PROOF" | python3 -c '
+import json, sys
+try:
+    proof = json.load(sys.stdin)
+    ok = (
+        proof.get("source") == "alpaca_trading_api_direct_uncached"
+        and proof.get("mode") == "paper"
+        and str(proof.get("account_status", "")).upper() == "ACTIVE"
+        and proof.get("flat") is True
+        and proof.get("positions_count") == 0
+        and proof.get("open_orders_count") == 0
+    )
+    print("OK" if ok else "BLOCK")
+except Exception:
+    print("UNVERIFIED")
+' 2>/dev/null)
+      if [ "$FLAT_READY" = "OK" ]; then
+        echo "Scalpr PAPER server is ready on http://127.0.0.1:8420."
+        echo "Server log: $SERVER_LOG"
+        exit 0
+      fi
+    fi
+  fi
   sleep 1
 done
 
-echo "Scalpr server did not open port 8420 within 10 seconds. Recent error output:"
+echo "Scalpr server did not reach live/ready status within 10 seconds. Recent error output:"
 tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
 exit 1

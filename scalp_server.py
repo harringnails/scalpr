@@ -2416,6 +2416,16 @@ from workup_api import router as workup_router
 app.include_router(workup_router)
 
 platform: Platform = None
+APP_RUNTIME_STATE = {
+    "phase": "STARTING",
+    "error": None,
+    "started_at": None,
+    "ready_at": None,
+}
+APP_RUNTIME_LOCK = threading.Lock()
+APP_HEARTBEAT_AT = None
+APP_HEARTBEAT_LOCK = threading.Lock()
+APP_INIT_THREAD = None
 
 # explain-v0 is deterministic by default.  The flag only permits a future
 # registered plan provider; this build registers the inert adapter, so there is
@@ -2433,6 +2443,13 @@ def _cached(key, ttl_seconds, compute):
     """Use one shared result across all browser tabs; fall back before startup."""
     cache = getattr(platform, "dashboard_cache", None) if platform is not None else None
     return cache.get_or_compute(key, ttl_seconds, compute) if cache else compute()
+
+
+@app.on_event("startup")
+def app_startup():
+    _set_runtime_state(phase="STARTING", error=None, started_at=datetime.now(timezone.utc).isoformat(), ready_at=None)
+    _start_app_heartbeat()
+    _bootstrap_platform_async("sip" if os.getenv("SCALPR_START_WITH_SIP", "") == "1" else "iex")
 
 
 def _latest_entry_intelligence_packet(symbol: str, *, tail_bytes: int = 2 * 1024 * 1024):
@@ -2500,6 +2517,69 @@ def _capture_guard_event(action, guard, actor=None, reason=None, request_id=None
             store.record_guard_event(record)
     except Exception as e:
         log(f"guard event capture skipped: {e}")
+
+
+def _runtime_snapshot():
+    with APP_RUNTIME_LOCK:
+        return dict(APP_RUNTIME_STATE)
+
+
+def _set_runtime_state(*, phase=None, error=None, started_at=None, ready_at=None):
+    with APP_RUNTIME_LOCK:
+        if phase is not None:
+            APP_RUNTIME_STATE["phase"] = phase
+        if error is not None or error is None:
+            APP_RUNTIME_STATE["error"] = error
+        if started_at is not None:
+            APP_RUNTIME_STATE["started_at"] = started_at
+        if ready_at is not None:
+            APP_RUNTIME_STATE["ready_at"] = ready_at
+
+
+def _set_heartbeat():
+    global APP_HEARTBEAT_AT
+    with APP_HEARTBEAT_LOCK:
+        APP_HEARTBEAT_AT = datetime.now(timezone.utc)
+
+
+def _heartbeat_snapshot():
+    with APP_HEARTBEAT_LOCK:
+        return APP_HEARTBEAT_AT
+
+
+def _bootstrap_platform(feed):
+    global platform
+    started_at = datetime.now(timezone.utc).isoformat()
+    _set_runtime_state(phase="STARTING", error=None, started_at=started_at, ready_at=None)
+    try:
+        instance = Platform(live=False, feed=feed)
+    except Exception as exc:
+        _set_runtime_state(phase="DEGRADED", error=str(exc)[:300], ready_at=None)
+        log(f"platform bootstrap failed: {exc}")
+        return
+    platform = instance
+    _set_runtime_state(
+        phase="READY",
+        error=platform.feed_error or platform.feed_startup_notice,
+        ready_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _set_heartbeat()
+
+
+def _bootstrap_platform_async(feed):
+    global APP_INIT_THREAD
+    if APP_INIT_THREAD is not None and APP_INIT_THREAD.is_alive():
+        return
+    APP_INIT_THREAD = threading.Thread(target=_bootstrap_platform, args=(feed,), daemon=True)
+    APP_INIT_THREAD.start()
+
+
+def _start_app_heartbeat():
+    def loop():
+        while True:
+            _set_heartbeat()
+            time.sleep(2.0)
+    threading.Thread(target=loop, daemon=True).start()
 
 
 # ── Wave Riding shadow mode (feature-flagged, READ-ONLY; no live orders) ──────
@@ -2686,6 +2766,60 @@ def state():
             "guard_loop_age_seconds": loop_age,
             "guard_loop_healthy": loop_age is not None and loop_age <= 3.0,
             "unprotected_symbols": unprotected}
+
+
+@app.get("/health/live")
+def health_live():
+    heartbeat = _heartbeat_snapshot()
+    runtime = _runtime_snapshot()
+    heartbeat_age = ((datetime.now(timezone.utc) - heartbeat).total_seconds()
+                     if heartbeat is not None else None)
+    return {
+        "service": "scalpr",
+        "status": "OK",
+        "phase": runtime["phase"],
+        "heartbeat_at": heartbeat.isoformat() if heartbeat else None,
+        "heartbeat_age_seconds": round(heartbeat_age, 3) if heartbeat_age is not None else None,
+    }
+
+
+@app.get("/health/ready")
+def health_ready():
+    runtime = _runtime_snapshot()
+    heartbeat = _heartbeat_snapshot()
+    heartbeat_age = ((datetime.now(timezone.utc) - heartbeat).total_seconds()
+                     if heartbeat is not None else None)
+    platform_ready = platform is not None
+    subsystem = {
+        "collector": {
+            "ready": bool(platform_ready and getattr(platform, "entry_bid_collector_status", None)),
+            "state": (platform.entry_bid_collector_status.get("state")
+                      if platform_ready and isinstance(platform.entry_bid_collector_status, dict)
+                      else "PLATFORM_NOT_READY"),
+        },
+        "flat_proof": {
+            "ready": bool(platform_ready and hasattr(platform, "account_flat_proof")),
+            "source": "alpaca_trading_api_direct_uncached" if platform_ready else None,
+        },
+        "cloudsql": {
+            "ready": bool(platform_ready and getattr(platform, "cloudsql_mirror_process", None) is not None),
+        },
+    }
+    ready = (
+        runtime["phase"] == "READY"
+        and platform_ready
+        and (heartbeat_age is not None and heartbeat_age <= 10.0)
+        and subsystem["collector"]["ready"]
+        and subsystem["flat_proof"]["ready"]
+    )
+    return {
+        "service": "scalpr",
+        "status": "READY" if ready else "DEGRADED",
+        "phase": runtime["phase"],
+        "error": runtime["error"],
+        "heartbeat_age_seconds": round(heartbeat_age, 3) if heartbeat_age is not None else None,
+        "subsystems": subsystem,
+    }
 
 
 @app.post("/api/trades")

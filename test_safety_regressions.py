@@ -448,16 +448,38 @@ def test_market_clock_failure_blocks_order_submission():
 def test_restart_requires_direct_flat_account_and_open_order_proof():
     source = open("restart.sh", encoding="utf-8").read()
     assert "/api/account-flat-proof" in source
-    assert "/api/holdings" not in source
+    assert "/health/live" in source
+    assert "/health/ready" in source
     assert 'proof.get("positions_count") == 0' in source
     assert 'proof.get("open_orders_count") == 0' in source
     assert 'proof.get("mode") == "paper"' in source
 
 
+def test_health_endpoints_expose_bind_first_and_readiness_state():
+    live = ss.health_live()
+    ready = ss.health_ready()
+    assert live["service"] == "scalpr"
+    assert live["status"] == "OK"
+    assert live["phase"] in {"STARTING", "READY", "DEGRADED"}
+    assert "heartbeat_at" in live
+    assert ready["service"] == "scalpr"
+    assert ready["status"] in {"READY", "DEGRADED"}
+    assert "collector" in ready["subsystems"]
+    assert "flat_proof" in ready["subsystems"]
+
+
+def test_startup_bootstrap_is_deferred_until_after_bind():
+    source = inspect.getsource(ss.app_startup)
+    assert "_bootstrap_platform_async" in source
+    assert "Platform(live=False" not in source
+    assert "health/live" not in source
+
+
 def test_cron_restart_has_safe_proof_and_runtime_flag_parity():
     source = open("restart_cron.sh", encoding="utf-8").read()
     assert "/api/account-flat-proof" in source
-    assert "/api/holdings" not in source
+    assert "/health/live" in source
+    assert "/health/ready" in source
     assert 'proof.get("positions_count") == 0' in source
     assert 'proof.get("open_orders_count") == 0' in source
     assert 'proof.get("mode") == "paper"' in source

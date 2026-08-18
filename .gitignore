@@ -72,5 +72,9 @@ outputs/
 # all jsonl are append-only evidence data, never code
 *.jsonl
 
+# runtime JSON state written by live processes; keep out of git
+*_status*.json
+*_state*.json
+
 # csv data / logs / journals (evidence, not code)
 *.csv

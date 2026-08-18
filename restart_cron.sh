@@ -42,6 +42,29 @@ if [ "$FLAT_VERDICT" != "OK" ]; then
   exit 1
 fi
 
+LIVE_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/live 2>/dev/null || true)
+READY_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/ready 2>/dev/null || true)
+LIVE_VERDICT=$(printf '%s' "$LIVE_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+    print(payload.get("status") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+READY_VERDICT=$(printf '%s' "$READY_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+    print(payload.get("status") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+if [ "$LIVE_VERDICT" != "OK" ] || [ "$READY_VERDICT" != "READY" ]; then
+  record "restart refused; live/readiness endpoints did not report OK/READY"
+  exit 1
+fi
+
 kill "$PID"
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if ! lsof -tiTCP:8420 -sTCP:LISTEN >/dev/null 2>&1; then
@@ -82,9 +105,36 @@ nohup "$PYTHON" scalp_server.py --sip > "$DIR/scalpr_server.log" 2>&1 &
 NEW_PID=$!
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  COLLECTOR_STATUS=$(curl -fsS --max-time 2 \
-    http://127.0.0.1:8420/api/entry-intelligence/collector 2>/dev/null || true)
-  COLLECTOR_VERDICT=$(printf '%s' "$COLLECTOR_STATUS" | python3 -c '
+  LIVE_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/live 2>/dev/null || true)
+  READY_PAYLOAD=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/ready 2>/dev/null || true)
+  HEARTBEAT_1=$(printf '%s' "$LIVE_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("heartbeat_at") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+  READY_STATUS=$(printf '%s' "$READY_PAYLOAD" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("status") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+  if [ "$READY_STATUS" = "READY" ]; then
+    sleep 1
+    LIVE_PAYLOAD_2=$(curl -fsS --max-time 2 http://127.0.0.1:8420/health/live 2>/dev/null || true)
+    HEARTBEAT_2=$(printf '%s' "$LIVE_PAYLOAD_2" | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("heartbeat_at") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+    if [ -n "$HEARTBEAT_1" ] && [ "$HEARTBEAT_1" != "$HEARTBEAT_2" ]; then
+      COLLECTOR_STATUS=$(curl -fsS --max-time 2 \
+        http://127.0.0.1:8420/api/entry-intelligence/collector 2>/dev/null || true)
+      COLLECTOR_VERDICT=$(printf '%s' "$COLLECTOR_STATUS" | python3 -c '
 import json, sys
 try:
     status = json.load(sys.stdin)
@@ -101,9 +151,15 @@ try:
 except Exception:
     print("UNVERIFIED")
 ' 2>/dev/null)
-  if [ "$COLLECTOR_VERDICT" = "OK" ]; then
-    record "Scalpr auto-restarted with verified v1.2 PRELOCK collector (pid $NEW_PID)"
-    exit 0
+      if [ "$COLLECTOR_VERDICT" = "OK" ]; then
+        record "Scalpr auto-restarted with verified v1.2 PRELOCK collector (pid $NEW_PID)"
+        exit 0
+      fi
+    fi
+  fi
+  if ! kill -0 "$NEW_PID" 2>/dev/null; then
+    record "restart failed; server exited before readiness was proven"
+    exit 1
   fi
   sleep 1
 done
