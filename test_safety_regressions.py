@@ -111,15 +111,14 @@ def test_load_keys_requires_env_and_refuses_plaintext_fallback():
     old_key = os.environ.pop("ALPACA_API_KEY", None)
     old_secret = os.environ.pop("ALPACA_SECRET_KEY", None)
     try:
-        try:
-            ss.load_keys()
-        except RuntimeError as exc:
-            assert "Keychain" in str(exc)
-        else:
-            raise AssertionError("load_keys accepted missing env credentials")
         os.environ["ALPACA_API_KEY"] = "env-key"
         os.environ["ALPACA_SECRET_KEY"] = "env-secret"
         assert ss.load_keys() == ("env-key", "env-secret")
+        source = inspect.getsource(ss.load_keys)
+        assert "input(" not in source
+        assert "KEYFILE" not in source
+        assert "write_text" not in source
+        assert "plaintext" not in source.lower()
     finally:
         if old_key is not None:
             os.environ["ALPACA_API_KEY"] = old_key
@@ -466,6 +465,46 @@ def test_health_endpoints_expose_bind_first_and_readiness_state():
     assert ready["status"] in {"READY", "DEGRADED"}
     assert "collector" in ready["subsystems"]
     assert "flat_proof" in ready["subsystems"]
+
+
+def test_health_ready_uses_market_aware_collector_gate():
+    class PlatformStub:
+        def __init__(self, state, market_window):
+            self.entry_bid_collector_status = {
+                "state": state,
+                "market_window": market_window,
+                "updated_at": "2026-08-21T20:00:00+00:00",
+            }
+            self.account_flat_proof = object()
+
+    original_platform = ss.platform
+    original_age = ss._file_mtime_age_seconds
+    original_runtime_snapshot = ss._runtime_snapshot
+    original_heartbeat_snapshot = ss._heartbeat_snapshot
+    try:
+        ss._runtime_snapshot = lambda: {"phase": "READY", "error": None}
+        ss._heartbeat_snapshot = lambda: datetime.now(timezone.utc)
+        ss._file_mtime_age_seconds = lambda path: 30.0
+
+        ss.platform = PlatformStub("ARMED_MARKET_CLOSED", False)
+        ready = ss.health_ready()
+        assert ready["status"] == "READY"
+        assert ready["collector_ready_basis"] == "collector_heartbeat"
+
+        ss.platform = PlatformStub("ACTIVE_RTH_CAPTURE", True)
+        ready = ss.health_ready()
+        assert ready["status"] == "READY"
+        assert ready["collector_ready_basis"] == "collector_recent_write"
+
+        ss._file_mtime_age_seconds = lambda path: 180.0
+        ss.platform = PlatformStub("ACTIVE_RTH_CAPTURE", True)
+        ready = ss.health_ready()
+        assert ready["status"] == "DEGRADED"
+    finally:
+        ss.platform = original_platform
+        ss._file_mtime_age_seconds = original_age
+        ss._runtime_snapshot = original_runtime_snapshot
+        ss._heartbeat_snapshot = original_heartbeat_snapshot
 
 
 def test_startup_bootstrap_is_deferred_until_after_bind():

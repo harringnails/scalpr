@@ -92,6 +92,10 @@ TICK_ROTATE_CHECK_SECONDS = 60.0
 # have it blank and are treated as 'unaudited', not silently trusted.
 TICK_FIELDS = ["utc_time", "provider_ts", "symbol", "bid", "ask",
                "bid_size", "ask_size", "mid", "spread"]
+ENTRY_INTELLIGENCE_COLLECTOR_STATUS = Path("entry_intelligence_collector_status_v1.json")
+ENTRY_INTELLIGENCE_DECISION_EVENTS = Path("entry_intelligence_decision_events_v1.jsonl")
+ENTRY_INTELLIGENCE_GATE_RESULTS = Path("entry_intelligence_gate_results_v1.jsonl")
+ENTRY_INTELLIGENCE_EVIDENCE_MANIFESTS = Path("entry_intelligence_evidence_manifests_v1.jsonl")
 
 
 def _tick_quote_row(symbol, quote, *, received_at=None,
@@ -268,9 +272,54 @@ ALLOW_DASHBOARD_WITHOUT_ALPACA = (
 
 
 def load_keys():
-    """Use environment or Keychain-loaded env only; never write plaintext keys."""
+    """Use the same paper-credential sources as the working main Alpaca client."""
     key, secret = os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
     if key and secret:
+        return key, secret
+    try:
+        key = subprocess.check_output(
+            ["launchctl", "getenv", "ALPACA_API_KEY"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip() or None
+    except Exception:
+        key = None
+    try:
+        secret = subprocess.check_output(
+            ["launchctl", "getenv", "ALPACA_SECRET_KEY"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip() or None
+    except Exception:
+        secret = None
+    if not (key and secret):
+        user = os.getenv("USER") or os.getenv("LOGNAME") or ""
+        if user:
+            try:
+                key = subprocess.check_output(
+                    [
+                        "security", "find-generic-password",
+                        "-a", user, "-s", "scalpr.alpaca.paper.key", "-w",
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                ).strip() or key
+            except Exception:
+                pass
+            try:
+                secret = subprocess.check_output(
+                    [
+                        "security", "find-generic-password",
+                        "-a", user, "-s", "scalpr.alpaca.paper.secret", "-w",
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                ).strip() or secret
+            except Exception:
+                pass
+    if key and secret:
+        os.environ["ALPACA_API_KEY"] = key
+        os.environ["ALPACA_SECRET_KEY"] = secret
         return key, secret
     raise RuntimeError(
         "Alpaca paper credentials are unavailable. Source load_keychain_env.sh "
@@ -2524,6 +2573,14 @@ def _runtime_snapshot():
         return dict(APP_RUNTIME_STATE)
 
 
+def _file_mtime_age_seconds(path: Path) -> float | None:
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromtimestamp(
+            path.stat().st_mtime, tz=timezone.utc)).total_seconds()
+    except OSError:
+        return None
+
+
 def _set_runtime_state(*, phase=None, error=None, started_at=None, ready_at=None):
     with APP_RUNTIME_LOCK:
         if phase is not None:
@@ -2790,12 +2847,18 @@ def health_ready():
     heartbeat_age = ((datetime.now(timezone.utc) - heartbeat).total_seconds()
                      if heartbeat is not None else None)
     platform_ready = platform is not None
+    collector_status = (
+        platform.entry_bid_collector_status
+        if platform_ready and isinstance(platform.entry_bid_collector_status, dict)
+        else {}
+    )
+    collector_state = str(collector_status.get("state") or "PLATFORM_NOT_READY")
+    collector_market_window = bool(collector_status.get("market_window"))
     subsystem = {
         "collector": {
-            "ready": bool(platform_ready and getattr(platform, "entry_bid_collector_status", None)),
-            "state": (platform.entry_bid_collector_status.get("state")
-                      if platform_ready and isinstance(platform.entry_bid_collector_status, dict)
-                      else "PLATFORM_NOT_READY"),
+            "ready": bool(platform_ready and collector_status),
+            "state": collector_state,
+            "market_window": collector_market_window,
         },
         "flat_proof": {
             "ready": bool(platform_ready and hasattr(platform, "account_flat_proof")),
@@ -2805,11 +2868,37 @@ def health_ready():
             "ready": bool(platform_ready and getattr(platform, "cloudsql_mirror_process", None) is not None),
         },
     }
+    collector_paths = {
+        "decision_events": ENTRY_INTELLIGENCE_DECISION_EVENTS,
+        "gate_results": ENTRY_INTELLIGENCE_GATE_RESULTS,
+        "evidence_manifests": ENTRY_INTELLIGENCE_EVIDENCE_MANIFESTS,
+    }
+    collector_activity = {
+        name: {
+            "present": path.exists(),
+            "age_seconds": _file_mtime_age_seconds(path),
+        }
+        for name, path in collector_paths.items()
+    }
+    collector_recent_write = any(
+        info["age_seconds"] is not None and info["age_seconds"] <= 120.0
+        for info in collector_activity.values()
+    )
+    collector_heartbeat_fresh = (
+        collector_status.get("updated_at") is not None
+        and _file_mtime_age_seconds(ENTRY_INTELLIGENCE_COLLECTOR_STATUS) is not None
+        and _file_mtime_age_seconds(ENTRY_INTELLIGENCE_COLLECTOR_STATUS) <= 120.0
+    )
+    collector_ready = bool(platform_ready and collector_status)
+    if collector_state == "ACTIVE_RTH_CAPTURE" or collector_market_window:
+        collector_ready = collector_ready and collector_recent_write
+    elif collector_state == "ARMED_MARKET_CLOSED":
+        collector_ready = collector_ready and collector_heartbeat_fresh
     ready = (
         runtime["phase"] == "READY"
         and platform_ready
         and (heartbeat_age is not None and heartbeat_age <= 10.0)
-        and subsystem["collector"]["ready"]
+        and collector_ready
         and subsystem["flat_proof"]["ready"]
     )
     return {
@@ -2818,6 +2907,12 @@ def health_ready():
         "phase": runtime["phase"],
         "error": runtime["error"],
         "heartbeat_age_seconds": round(heartbeat_age, 3) if heartbeat_age is not None else None,
+        "collector_ready_basis": (
+            "collector_recent_write" if (collector_state == "ACTIVE_RTH_CAPTURE"
+                                         or collector_market_window)
+            else "collector_heartbeat"
+        ),
+        "collector_activity": collector_activity,
         "subsystems": subsystem,
     }
 
