@@ -18,7 +18,7 @@ server-loaded code and require the flat-gated restart path.
 
 ## Live data boundary
 
-The wrapper runs code from the worktree and Python from the operative `.venv`,
+The launchd job runs Python code from the worktree with the operative `.venv`,
 but all evidence inputs and dense A2 outputs are absolute paths under:
 
 `/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7`
