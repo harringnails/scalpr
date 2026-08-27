@@ -214,6 +214,33 @@ def test_uniform_relabel_and_verifier_use_only_genuine_fresh_dense_quotes(tmp_pa
     assert verification["status"] == "PASS"
 
 
+def test_repeated_uniform_relabel_is_deterministic_and_does_not_duplicate(tmp_path):
+    episodes = tmp_path / "episodes.jsonl"
+    tick_log = tmp_path / "tick_log.csv"
+    labels = tmp_path / "labels.jsonl"
+    summary = tmp_path / "summary.json"
+    comparison = tmp_path / "comparison.json"
+    episodes.write_text(json.dumps(_episode()) + "\n")
+    tick_log.write_text("utc_time,provider_ts,symbol,bid,ask\n")
+
+    kwargs = {
+        "episodes_path": episodes,
+        "tick_log_path": tick_log,
+        "quarantine_path": tmp_path / "quarantine.jsonl",
+        "output_path": labels,
+        "summary_path": summary,
+        "comparison_path": comparison,
+    }
+    first = dense.run_uniform_relabel(_WindowClient(), **kwargs)
+    first_bytes = labels.read_bytes()
+    second = dense.run_uniform_relabel(_WindowClient(), **kwargs)
+
+    assert first["records_appended"] == 1
+    assert second["records_appended"] == 0
+    assert labels.read_bytes() == first_bytes
+    assert len(labels.read_text().splitlines()) == 1
+
+
 def test_dense_source_is_not_imported_by_server_startup_path():
     server_source = (dense.Path(dense.__file__).with_name("scalp_server.py")).read_text()
     assert "a2_dense_source" not in server_source
