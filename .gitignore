@@ -25,6 +25,7 @@ scalpr_server*.log
 scalpr_autorestart.log
 entry_intelligence_collector_status_v1.json
 incubation_active_v0.json
+collector_alerts_v0.state.json
 
 # === OS / editor ===
 .DS_Store
