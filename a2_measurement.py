@@ -1,8 +1,9 @@
 """Point-in-time A2 underlying-forward-return measurement pipeline.
 
 This is a paper/shadow research labeler.  It consumes the admitted v1 episode
-ledger and the append-only SPY quote log; it never imports broker, order, or
-Guard code.  The primary label is direction-adjusted 60-minute log return.
+ledger and caller-supplied point-in-time SPY quotes; it never imports broker,
+order, or Guard code.  The primary label is direction-adjusted 60-minute log
+return.  The legacy tick log remains available only as an explicit cross-check.
 
 The existing ``entry_policy.compute_decision_outcome`` helper is deliberately
 not used for primary A2 labels: it works from completed minute bars, which can
@@ -26,7 +27,7 @@ from zoneinfo import ZoneInfo
 import entry_episode_integrity_v1 as episode_integrity
 
 
-SCHEMA_VERSION = "a2-underlying-forward-return-v2"
+SCHEMA_VERSION = "a2-underlying-forward-return-v3"
 DEFAULT_TICK_LOG = Path("tick_log.csv")
 DEFAULT_EPISODES = Path("entry_intelligence_episodes_v1.jsonl")
 DEFAULT_QUARANTINE_MANIFEST = episode_integrity.DEFAULT_QUARANTINE_MANIFEST
@@ -35,21 +36,33 @@ DEFAULT_OUTPUT_PATH = DEFAULT_OUTPUT_DIR / "a2_labels_v2.jsonl"
 DEFAULT_SUMMARY_PATH = DEFAULT_OUTPUT_DIR / "a2_summary_v2.json"
 HORIZONS_MIN = (5, 15, 30, 60)
 ET = ZoneInfo("America/New_York")
+LEGACY_ENDPOINT_SOURCE = "live_tick_log"
+DENSE_ENDPOINT_SOURCE = "alpaca_historical_stock_quote_v1"
+SHIPPED_CLOCK_SKEW_TOLERANCE_SECONDS = 3.0
 
 # The logger samples at two seconds.  Five seconds is a precommitted maximum
 # observation offset, not a relaxation of any option-quote freshness rule.
 MAX_POINT_OFFSET_SECONDS = 5.0
-MEASUREMENT_CONFIG = {
-    "measurement_config_version": "a2-underlying-return-point-in-time-v1",
+BASE_MEASUREMENT_CONFIG = {
+    "measurement_config_version": "a2-underlying-return-point-in-time-v2",
     "symbol": "SPY",
     "price": "two_sided_non_crossed_quote_mid",
     "event_timestamp": "provider_ts",
     "anchor_rule": "latest_provider_quote_at_or_before_t0_within_5s",
-    "endpoint_rule": "earliest_provider_quote_at_or_after_t0_plus_h_within_5s",
+    "endpoint_rule": "latest_provider_quote_at_or_before_t0_plus_h_within_5s",
     "max_point_offset_seconds": MAX_POINT_OFFSET_SECONDS,
+    "clock_skew_tolerance_seconds": SHIPPED_CLOCK_SKEW_TOLERANCE_SECONDS,
     "missing_endpoint_rule": "UNAVAILABLE_NEVER_IMPUTE",
     "return_convention": "natural_log_return",
+    "horizons_minutes": list(HORIZONS_MIN),
 }
+
+
+def measurement_config(endpoint_source: str) -> dict[str, Any]:
+    return {**BASE_MEASUREMENT_CONFIG, "endpoint_source": endpoint_source}
+
+
+MEASUREMENT_CONFIG = measurement_config(LEGACY_ENDPOINT_SOURCE)
 MEASUREMENT_CONFIG_HASH = hashlib.sha256(
     json.dumps(MEASUREMENT_CONFIG, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()
@@ -100,7 +113,8 @@ def _clean_quote(row: dict[str, Any]) -> dict[str, Any] | None:
         "mid": (bid + ask) / 2.0,
         "bid": bid,
         "ask": ask,
-        "source": "tick_log.csv:provider_ts:two_sided_mid",
+        "source": LEGACY_ENDPOINT_SOURCE,
+        "endpoint_source": LEGACY_ENDPOINT_SOURCE,
     }
 
 
@@ -222,28 +236,25 @@ def _latest_at_or_before(quotes: list[dict[str, Any]], target: datetime) -> dict
     return selected
 
 
-def _earliest_at_or_after(quotes: list[dict[str, Any]], target: datetime) -> dict[str, Any] | None:
-    for quote in quotes:
-        if quote["provider_ts"] < target:
-            continue
-        if (quote["provider_ts"] - target).total_seconds() <= MAX_POINT_OFFSET_SECONDS:
-            return quote
-        return None
-    return None
-
-
-def _quote_stamp(quote: dict[str, Any] | None, target: datetime) -> tuple[str | None, str | None, float | None]:
+def _quote_stamp(
+    quote: dict[str, Any] | None,
+    target: datetime,
+    endpoint_source: str,
+) -> tuple[str | None, str, float | None, float | None]:
     if quote is None:
-        return None, None, None
+        return None, endpoint_source, None, None
+    age = (target - quote["provider_ts"]).total_seconds()
     return (
         quote["provider_ts"].isoformat(),
-        quote["source"],
-        round((quote["provider_ts"] - target).total_seconds(), 6),
+        str(quote.get("endpoint_source") or quote.get("source") or endpoint_source),
+        round(age, 6),
+        round(-age, 6),
     )
 
 
 def _returns_and_path(
-    anchor: dict[str, Any], endpoints: dict[int, dict[str, Any] | None], quotes: list[dict[str, Any]]
+    anchor: dict[str, Any], endpoints: dict[int, dict[str, Any] | None],
+    quotes: list[dict[str, Any]], *, path_quotes_complete: bool,
 ) -> tuple[dict[str, float | None], float | None, float | None]:
     returns = {
         f"return_{horizon}m": (
@@ -252,7 +263,7 @@ def _returns_and_path(
         for horizon, endpoint in endpoints.items()
     }
     end_60 = endpoints.get(60)
-    if end_60 is None:
+    if end_60 is None or not path_quotes_complete:
         return returns, None, None
     path_mids = [
         quote["mid"]
@@ -268,13 +279,21 @@ def _returns_and_path(
     )
 
 
-def _base_label(episode: dict[str, Any], decided_at: datetime | None, session_date: str) -> dict[str, Any]:
+def _base_label(
+    episode: dict[str, Any], decided_at: datetime | None, session_date: str,
+    endpoint_source: str,
+) -> dict[str, Any]:
     side = str(episode.get("side") or "").upper()
     direction_sign = 1 if side == "CALL" else -1 if side == "PUT" else None
+    config = measurement_config(endpoint_source)
+    config_hash = hashlib.sha256(
+        json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    endpoint_keys = [f"{horizon}m" for horizon in HORIZONS_MIN]
     return {
         "schema_version": SCHEMA_VERSION,
-        "measurement_config_version": MEASUREMENT_CONFIG["measurement_config_version"],
-        "measurement_config_hash": MEASUREMENT_CONFIG_HASH,
+        "measurement_config_version": config["measurement_config_version"],
+        "measurement_config_hash": config_hash,
         "config_version": episode.get("config_version"),
         "config_hash": episode.get("config_hash"),
         "episode_key": episode.get("episode_key"),
@@ -291,8 +310,23 @@ def _base_label(episode: dict[str, Any], decided_at: datetime | None, session_da
         "is_calibrated_probability": False,
         "horizons_minutes": list(HORIZONS_MIN),
         "primary_metric": "signed_return_60m",
-        "source_store": "tick_log.csv",
+        "endpoint_source": endpoint_source,
+        "source_store": (
+            "alpaca_historical_stock_quotes:SIP"
+            if endpoint_source == DENSE_ENDPOINT_SOURCE else "tick_log.csv"
+        ),
         "source_timestamp_field": "provider_ts",
+        "max_point_offset_seconds": MAX_POINT_OFFSET_SECONDS,
+        "clock_skew_tolerance_seconds": SHIPPED_CLOCK_SKEW_TOLERANCE_SECONDS,
+        "anchor_price": None,
+        "anchor_provider_ts": None,
+        "anchor_source": endpoint_source,
+        "anchor_age_seconds": None,
+        "anchor_offset_seconds": None,
+        "endpoint_provider_ts": {key: None for key in endpoint_keys},
+        "endpoint_sources": {key: endpoint_source for key in endpoint_keys},
+        "endpoint_age_seconds": {key: None for key in endpoint_keys},
+        "endpoint_offset_seconds": {key: None for key in endpoint_keys},
     }
 
 
@@ -308,11 +342,20 @@ def _finalize_label_id(label: dict[str, Any]) -> None:
     ).hexdigest()
 
 
-def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any]] | None) -> dict[str, Any]:
+def label_episode(
+    episode: dict[str, Any], *, session_quotes: list[dict[str, Any]] | None,
+    endpoint_source: str | None = None, path_quotes_complete: bool = True,
+) -> dict[str, Any]:
     """Create one strictly point-in-time A2 label from an admitted episode."""
     decided_at = _parse_dt(episode.get("decided_at"))
     session_date = str(episode.get("session_date") or "")
-    label = _base_label(episode, decided_at, session_date)
+    quotes = session_quotes or []
+    resolved_source = endpoint_source or next(
+        (str(row.get("endpoint_source") or row.get("source")) for row in quotes
+         if row.get("endpoint_source") or row.get("source")),
+        LEGACY_ENDPOINT_SOURCE,
+    )
+    label = _base_label(episode, decided_at, session_date, resolved_source)
     if decided_at is None or not session_date:
         label.update({
             "label_status": "UNAVAILABLE", "a2_outcome_status": "A2-UNAVAILABLE",
@@ -328,14 +371,15 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
         _finalize_label_id(label)
         return label
 
-    quotes = session_quotes or []
     anchor = _latest_at_or_before(quotes, decided_at)
     label["session_minute"] = _session_minute(decided_at, session_date)
-    anchor_ts, anchor_source, anchor_offset = _quote_stamp(anchor, decided_at)
+    anchor_ts, anchor_source, anchor_age, anchor_offset = _quote_stamp(
+        anchor, decided_at, resolved_source)
     label.update({
         "anchor_price": round(anchor["mid"], 6) if anchor else None,
         "anchor_provider_ts": anchor_ts,
         "anchor_source": anchor_source,
+        "anchor_age_seconds": anchor_age,
         "anchor_offset_seconds": anchor_offset,
     })
     if anchor is None:
@@ -349,21 +393,24 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
     endpoints: dict[int, dict[str, Any] | None] = {}
     endpoint_ts: dict[str, str | None] = {}
     endpoint_sources: dict[str, str | None] = {}
+    endpoint_ages: dict[str, float | None] = {}
     endpoint_offsets: dict[str, float | None] = {}
     missing: list[str] = []
     for horizon in HORIZONS_MIN:
         target = decided_at + timedelta(minutes=horizon)
-        endpoint = _earliest_at_or_after(quotes, target)
+        endpoint = _latest_at_or_before(quotes, target)
         endpoints[horizon] = endpoint
-        stamp, source, offset = _quote_stamp(endpoint, target)
+        stamp, source, age, offset = _quote_stamp(endpoint, target, resolved_source)
         key = f"{horizon}m"
         endpoint_ts[key] = stamp
         endpoint_sources[key] = source
+        endpoint_ages[key] = age
         endpoint_offsets[key] = offset
         if endpoint is None:
             missing.append(f"missing_endpoint_{key}_within_5s")
 
-    returns, mfe, mae = _returns_and_path(anchor, endpoints, quotes)
+    returns, mfe, mae = _returns_and_path(
+        anchor, endpoints, quotes, path_quotes_complete=path_quotes_complete)
     signed = {
         f"signed_return_{horizon}m": (
             round(returns[f"return_{horizon}m"] * label["setup_direction_sign"], 6)
@@ -374,7 +421,9 @@ def label_episode(episode: dict[str, Any], *, session_quotes: list[dict[str, Any
     label.update({
         "endpoint_provider_ts": endpoint_ts,
         "endpoint_sources": endpoint_sources,
+        "endpoint_age_seconds": endpoint_ages,
         "endpoint_offset_seconds": endpoint_offsets,
+        "path_quote_coverage": "COMPLETE" if path_quotes_complete else "ENDPOINT_WINDOWS_ONLY",
         "outcome": {"available": not missing, **returns, "mfe": mfe, "mae": mae},
         **returns,
         **signed,
@@ -393,6 +442,9 @@ def measure_a2(
     *, episodes_path: Path = DEFAULT_EPISODES, tick_log_path: Path = DEFAULT_TICK_LOG,
     admitted_only: bool = True, quarantine_path: Path | None = None,
     session_date: str | None = None,
+    quote_sessions: dict[str, list[dict[str, Any]]] | None = None,
+    endpoint_source: str = LEGACY_ENDPOINT_SOURCE,
+    path_quotes_complete: bool = True,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     quarantine_path = quarantine_path or episodes_path.with_name(DEFAULT_QUARANTINE_MANIFEST.name)
     unfiltered = load_episodes(
@@ -412,9 +464,18 @@ def measure_a2(
         ]
     quarantined_count = len(unfiltered) - len(episodes)
     clean_episodes, duplicate_count, collisions, collision_rows_excluded = clean_a2_episodes(episodes)
-    sessions = load_tick_sessions(tick_log_path)
+    sessions = (
+        load_tick_sessions(tick_log_path)
+        if quote_sessions is None and endpoint_source == LEGACY_ENDPOINT_SOURCE
+        else (quote_sessions or {})
+    )
     labeled = [
-        label_episode(episode, session_quotes=sessions.get(str(episode.get("session_date") or "")))
+        label_episode(
+            episode,
+            session_quotes=sessions.get(str(episode.get("session_date") or "")),
+            endpoint_source=endpoint_source,
+            path_quotes_complete=path_quotes_complete,
+        )
         for episode in clean_episodes
     ]
     return labeled, summarize_a2(
@@ -424,6 +485,7 @@ def measure_a2(
         clean_a2_eligible_episode_count=len(clean_episodes),
         collision_episode_rows_excluded=collision_rows_excluded,
         known_collisions=collisions,
+        endpoint_source=endpoint_source,
     )
 
 
@@ -435,6 +497,7 @@ def summarize_a2(
     clean_a2_eligible_episode_count: int | None = None,
     collision_episode_rows_excluded: int | None = None,
     known_collisions: dict[str, list[str]] | None = None,
+    endpoint_source: str = LEGACY_ENDPOINT_SOURCE,
 ) -> dict[str, Any]:
     episodes = episodes or []
     sessions = sessions or {}
@@ -451,10 +514,15 @@ def summarize_a2(
     if clean_a2_eligible_episode_count is None:
         clean_a2_eligible_episode_count = len(labeled)
     data_integrity_status = "PASS" if not collisions else "FAIL_CROSS_SIDE_TIMESTAMP_COLLISIONS"
+    config = measurement_config(endpoint_source)
+    config_hash = hashlib.sha256(
+        json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     return {
         "schema_version": SCHEMA_VERSION,
-        "measurement_config_version": MEASUREMENT_CONFIG["measurement_config_version"],
-        "measurement_config_hash": MEASUREMENT_CONFIG_HASH,
+        "measurement_config_version": config["measurement_config_version"],
+        "measurement_config_hash": config_hash,
+        "endpoint_source": endpoint_source,
         "n_episodes_input": len(episodes),
         "n_quarantined_episode_rows_excluded": quarantined_episode_rows_excluded,
         "n_duplicate_episode_rows_excluded": duplicate_episode_rows_excluded,
@@ -484,7 +552,7 @@ def summarize_a2(
         ),
         "notes": (
             "A2 labels use provider-time two-sided SPY mids. Anchor quotes must be at or before t0; "
-            "endpoints must be at or after each fixed horizon. Missing points remain unavailable. "
+            "endpoints use the last fresh quote at or before each fixed horizon. Missing points remain unavailable. "
             "Only admitted, non-quarantined, non-collision episodes accrue; option trackability is irrelevant. "
             "Cross-side co-timed records are a Phase-4 integrity failure, not independent evidence."
         ),
@@ -522,11 +590,17 @@ def materialize_a2(
     *, episodes_path: Path = DEFAULT_EPISODES, tick_log_path: Path = DEFAULT_TICK_LOG,
     quarantine_path: Path | None = None, output_path: Path = DEFAULT_OUTPUT_PATH,
     summary_path: Path = DEFAULT_SUMMARY_PATH,
+    quote_sessions: dict[str, list[dict[str, Any]]] | None = None,
+    endpoint_source: str = LEGACY_ENDPOINT_SOURCE,
+    path_quotes_complete: bool = True,
 ) -> dict[str, Any]:
     """Append idempotent research labels and refresh the aggregate A2 summary."""
     labeled, summary = measure_a2(
         episodes_path=episodes_path, tick_log_path=tick_log_path,
         quarantine_path=quarantine_path,
+        quote_sessions=quote_sessions,
+        endpoint_source=endpoint_source,
+        path_quotes_complete=path_quotes_complete,
     )
     summary["records_appended"] = append_jsonl(labeled, output_path)
     write_summary(summary, summary_path)

@@ -43,7 +43,7 @@ def _quote(at, mid):
 def _complete_quotes(prices):
     quotes = [_quote(BASE - timedelta(seconds=1), 100.0)]
     for horizon, price in prices.items():
-        quotes.append(_quote(BASE + timedelta(minutes=horizon, seconds=1), price))
+        quotes.append(_quote(BASE + timedelta(minutes=horizon, seconds=-1), price))
     return quotes
 
 
