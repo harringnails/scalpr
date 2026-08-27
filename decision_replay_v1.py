@@ -300,7 +300,19 @@ def build_no_trade_tracking_plan(*, packet: dict, side: str, selection: dict,
             reason_code="COUNTERFACTUAL_CONTRACT_FROZEN_AT_DECISION",
             selected_contract=contract, entry_quote_observed_at=observed,
             entry_ask=float(contract["ask"]), stop_bid=stop, target_bid=target)
-    reason = str(selection.get("reason") or "NO_POINT_IN_TIME_CONTRACT")
+    reason = str(selection.get("reason") or "")
+    if not reason:
+        rejected = selection.get("rejected") or []
+        rejected_reasons = sorted({
+            str(item)
+            for row in rejected
+            for item in (row.get("reasons") or [])
+            if item
+        })
+        if rejected_reasons:
+            reason = f"NO_POINT_IN_TIME_CONTRACT__{rejected_reasons[0].upper()}"
+        else:
+            reason = "NO_POINT_IN_TIME_CONTRACT"
     identity = {
         "version": NO_TRADE_PLAN_VERSION, "decision_id": packet["decision_id"],
         "status": "UNTRACKABLE", "reason": reason,

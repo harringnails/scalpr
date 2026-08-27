@@ -250,6 +250,23 @@ def test_trader_plus_startup_fallback_is_visible_in_state_source():
     assert "feed_startup_notice" in inspect.getsource(ss.state)
 
 
+def test_regular_session_active_can_bootstrap_session_bounds():
+    p = object.__new__(ss.Platform)
+    p.trading = ReadOnlyCalendarTrading()
+    p.session_market_date = datetime(2026, 8, 24).date()
+    p.session_open_et = None
+    p.session_close_et = None
+    old_platform = ss.platform
+    try:
+        ss.platform = p
+        assert ss._regular_session_active(
+            datetime(2026, 8, 24, 14, 0, tzinfo=timezone.utc)) is True
+        assert p.session_open_et is not None
+        assert p.session_close_et is not None
+    finally:
+        ss.platform = old_platform
+
+
 def cfg(symbol, qty=2):
     return {"symbol": symbol, "type": "option", "buy": True, "qty": qty,
             "auto_exit_authorized": True,

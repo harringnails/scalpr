@@ -692,6 +692,7 @@ class Platform:
         self.session_open_et = None
         self.session_close_et = None
         _migrate_journal()
+        self._bootstrap_session_bounds()
         try:
             self.store = OperationalStore()
             self.store.sync_journal(JOURNAL)
@@ -757,6 +758,54 @@ class Platform:
         except (OSError, subprocess.SubprocessError) as exc:
             self.health.record(
                 "cloudsql_mirror", "ERROR", detail=type(exc).__name__, force=True)
+
+    def _bootstrap_session_bounds(self):
+        """Populate today's session bounds before the background loops start.
+
+        The collector gate fails closed until it knows today's session window.
+        Bind-first startup used to leave these as ``None`` until the shadow loop
+        refreshed them asynchronously. Bootstrapping here removes that race.
+        """
+        try:
+            from alpaca.trading.requests import GetCalendarRequest
+            from zoneinfo import ZoneInfo
+            et = ZoneInfo("America/New_York")
+        except Exception:
+            et = timezone.utc
+        today_et = datetime.now(et).date()
+        try:
+            sessions = self.trading.get_calendar(
+                GetCalendarRequest(start=today_et, end=today_et))
+        except Exception as exc:
+            log(f"session bound bootstrap failed: {type(exc).__name__}: {str(exc)[:120]}")
+            return
+        if not sessions:
+            self.session_market_date = today_et
+            self.session_open_et = None
+            self.session_close_et = None
+            return
+        row = sessions[0]
+        open_value = getattr(row, "open", None)
+        close_value = getattr(row, "close", None)
+        if isinstance(open_value, datetime):
+            open_et = open_value if open_value.tzinfo else open_value.replace(tzinfo=et)
+        elif open_value is not None:
+            open_et = datetime.combine(today_et, open_value, tzinfo=et)
+        else:
+            open_et = None
+        if isinstance(close_value, datetime):
+            close_et = close_value if close_value.tzinfo else close_value.replace(tzinfo=et)
+        elif close_value is not None:
+            close_et = datetime.combine(today_et, close_value, tzinfo=et)
+        else:
+            close_et = None
+        self.session_market_date = today_et
+        self.session_open_et = open_et
+        self.session_close_et = close_et
+        log(
+            "session bounds bootstrapped: "
+            f"market_date={today_et.isoformat()} open={open_et} close={close_et}"
+        )
 
     # ── trade lifecycle ──
     OCC_RE = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
@@ -1554,6 +1603,11 @@ class Platform:
                 stock_data=self.stock_data, option_data=self.option_data, feed=self.feed)
             prior_state = None
             while True:
+                if (self.session_open_et is None or self.session_close_et is None
+                        or self.session_market_date != datetime.now(
+                            self.session_open_et.tzinfo if self.session_open_et else timezone.utc
+                        ).date()):
+                    self._bootstrap_session_bounds()
                 status = self.entry_bid_collector.tick(
                     market_active=_regular_session_active(),
                     session_open_et=self.session_open_et,
@@ -1574,6 +1628,19 @@ class Platform:
                         }, force=True)
                     log(f"entry bid collector: {state}")
                     prior_state = state
+                try:
+                    self.health.record(
+                        "entry_bid_collector_tick", "OK",
+                        fields={
+                            "state": state,
+                            "market_window": status.get("market_window"),
+                            "last_decision_minute": getattr(
+                                self.entry_bid_collector, "last_decision_minute", None),
+                            "active_decisions": status.get("active_decisions"),
+                        },
+                        force=(prior_state is None))
+                except Exception:
+                    pass
                 time.sleep(5.0)
         except Exception as exc:
             self.entry_bid_collector_status = {
@@ -2483,6 +2550,30 @@ def _regular_session_active(now=None):
         session_open = getattr(platform, "session_open_et", None)
         session_close = getattr(platform, "session_close_et", None)
         if session_open is None or session_close is None:
+            # Bind-first startup can reach the collector before the shadow loop
+            # refreshes calendar bounds. Fall back to the live calendar directly.
+            try:
+                from alpaca.trading.requests import GetCalendarRequest
+                sessions = platform.trading.get_calendar(
+                    GetCalendarRequest(start=current.date(), end=current.date()))
+                if sessions:
+                    row = sessions[0]
+                    session_open = getattr(row, "open", None)
+                    session_close = getattr(row, "close", None)
+                    if isinstance(session_open, datetime):
+                        session_open = session_open if session_open.tzinfo else session_open.replace(tzinfo=et)
+                    elif session_open is not None:
+                        session_open = datetime.combine(current.date(), session_open, tzinfo=et)
+                    if isinstance(session_close, datetime):
+                        session_close = session_close if session_close.tzinfo else session_close.replace(tzinfo=et)
+                    elif session_close is not None:
+                        session_close = datetime.combine(current.date(), session_close, tzinfo=et)
+                    if session_open is not None and session_close is not None:
+                        platform.session_open_et = session_open
+                        platform.session_close_et = session_close
+                        return session_open <= current < session_close
+            except Exception:
+                return False
             return False  # the calendar confirmed there is no session today
         return session_open <= current < session_close
     minute = current.hour * 60 + current.minute

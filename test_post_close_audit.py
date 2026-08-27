@@ -48,7 +48,7 @@ def test_admissions_and_outcome_revisions_are_counted_honestly():
         })
 
     ledger = report["entry_intelligence_ledger"]
-    contract_data_v2 = report["option_bid_trackability_contract_data_v2"]
+    contract_data_v2 = report["contract_data_v2_scoreboard"]
     assert ledger["episode_evaluations"] == 2
     assert ledger["admitted_episodes"] == 1
     assert ledger["rejected_episode_evaluations"] == 1
@@ -70,7 +70,7 @@ def test_admissions_and_outcome_revisions_are_counted_honestly():
         "0_ticks": 1, "1_tick": 1, "2_ticks": 1}
     assert contract_data_v2["executable_bid_coverage"] == {
         "coverage": 0.9, "max_gap_seconds": 4.0}
-    assert report["a2_accrual_mvp_edge"] == {
+    assert report["a2_accrual_scoreboard"] == {
         "basis": "underlying_forward_return_a2_mvp_edge",
         "status": "MEASURED",
         "clean_a2_eligible_episode_count": 1,
@@ -85,6 +85,7 @@ def test_admissions_and_outcome_revisions_are_counted_honestly():
         "phase4_preflight": "UNDERPOWERED_INCONCLUSIVE",
         "power_gate_reached": False,
     }
+    assert report["dense_source_gap_note"] is None
 
 
 def test_evaluated_at_does_not_reassign_outcome_to_a_later_day():
@@ -95,5 +96,52 @@ def test_evaluated_at_does_not_reassign_outcome_to_a_later_day():
         audit_day="2026-08-14", decisions=decisions, episodes=[], no_trade=[],
         outcomes=outcomes, hypo_outcomes=[], bid_ticks=[], hypo_bid_ticks=[],
         collector={})
-    assert report["option_bid_trackability_contract_data_v2"]["completed_outcomes"] == 0
-    assert report["option_bid_trackability_contract_data_v2"]["latest_outcome_statuses"] == {}
+    assert report["contract_data_v2_scoreboard"]["completed_outcomes"] == 0
+    assert report["contract_data_v2_scoreboard"]["latest_outcome_statuses"] == {}
+
+
+def test_direction_axis_excludes_warmup_from_post_warmup_fresh_rate():
+    decisions = [
+        {
+            "decision_id": "warmup",
+            "decided_at": "2026-08-25T13:35:00Z",
+            "missing_or_stale": ["completed_5m_bars<15"],
+            "scores": {
+                "direction": {
+                    "status": "MISSING",
+                    "unavailable": ["completed_5m_bars<15"],
+                }
+            },
+        },
+        {
+            "decision_id": "fresh",
+            "decided_at": "2026-08-25T14:10:00Z",
+            "missing_or_stale": [],
+            "scores": {
+                "direction": {
+                    "status": "FRESH",
+                    "unavailable": [],
+                }
+            },
+        },
+    ]
+    report = audit.build_report(
+        audit_day="2026-08-25", decisions=decisions, episodes=[], no_trade=[],
+        outcomes=[], hypo_outcomes=[], bid_ticks=[], hypo_bid_ticks=[],
+        collector={},
+    )
+    direction = report["direction_axis"]
+    assert direction["warmup_missing"] == 1
+    assert direction["FRESH"] == 1
+    assert direction["MISSING"] == 0
+    assert direction["fresh_rate"] == 1.0
+    assert direction["post_warmup_total"] == 1
+
+
+def test_dense_source_gap_note_is_emitted_for_missing_a2_endpoints():
+    summary = {
+        "missing_reason_counts": {
+            "missing_endpoint_15m_within_5s;missing_endpoint_30m_within_5s": 1
+        }
+    }
+    assert "dense-source gap" in (audit.dense_source_gap_note(summary) or "")

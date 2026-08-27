@@ -472,6 +472,16 @@ def test_no_trade_plan_gate_records_and_manifest_are_auditable():
     assert unavailable_plan.selected_contract is None
     assert unavailable_plan.reason_code == "PROVIDER_UNAVAILABLE"
 
+    rejected_plan = replay.build_no_trade_tracking_plan(
+        packet=payload, side="CALL",
+        selection={"selected": None, "source_status": "FRESH", "rejected": [
+            {"option_symbol": "SPY-C", "reasons": ["quote_stale", "delta_unavailable"]},
+            {"option_symbol": "SPY-D", "reasons": ["spread"]},
+        ]},
+        config=config, created_at=NOW)
+    assert rejected_plan.status == "UNTRACKABLE"
+    assert rejected_plan.reason_code == "NO_POINT_IN_TIME_CONTRACT__DELTA_UNAVAILABLE"
+
     gates = replay.build_gate_results(
         packet=payload, setup=setup, selection=selection,
         config=config, evaluated_at=NOW)

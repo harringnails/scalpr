@@ -119,24 +119,34 @@ def net_return_sensitivity_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
 
 def direction_state_summary(decision_rows: list[dict[str, Any]]) -> dict[str, Any]:
     counts = collections.Counter()
+    warmup_count = 0
+    evaluated_rows = 0
     for row in decision_rows:
         scores = row.get("scores") or {}
         direction = scores.get("direction") or {}
+        unavailable = {str(item) for item in (direction.get("unavailable") or [])}
+        missing_or_stale = {str(item) for item in (row.get("missing_or_stale") or [])}
+        is_warmup = "completed_5m_bars<15" in unavailable or "completed_5m_bars<15" in missing_or_stale
+        if is_warmup:
+            warmup_count += 1
+            continue
         status = str(direction.get("status") or "MISSING").upper()
         if status in {"FRESH", "STALE", "MISSING", "UNAVAILABLE", "UNUSABLE"}:
             counts[status] += 1
         else:
             counts["UNUSABLE"] += 1
-    total = sum(counts.values())
-    fresh_rate = (counts["FRESH"] / total) if total else None
+        evaluated_rows += 1
+    fresh_rate = (counts["FRESH"] / evaluated_rows) if evaluated_rows else None
     return {
         "FRESH": counts["FRESH"],
         "STALE": counts["STALE"],
         "MISSING": counts["MISSING"],
         "UNAVAILABLE": counts["UNAVAILABLE"],
         "UNUSABLE": counts["UNUSABLE"],
+        "warmup_missing": warmup_count,
         "fresh_rate": fresh_rate,
-        "total": total,
+        "total": evaluated_rows,
+        "post_warmup_total": evaluated_rows,
     }
 
 
@@ -188,6 +198,21 @@ def a2_accrual_scoreboard(summary: dict[str, Any] | None) -> dict[str, Any]:
         "phase4_preflight": summary.get("phase4_preflight"),
         "power_gate_reached": summary.get("power_gate_reached"),
     }
+
+
+def dense_source_gap_note(summary: dict[str, Any] | None) -> str | None:
+    if not summary:
+        return None
+    reasons = summary.get("missing_reason_counts") or {}
+    if not reasons:
+        return None
+    top_reason = max(reasons.items(), key=lambda item: item[1])[0]
+    if "missing_endpoint_15m_within_5s" in top_reason or "missing_endpoint_30m_within_5s" in top_reason:
+        return (
+            "dense-source gap: SPY tick_log.csv lacks at least one of the 15m/30m "
+            "point-in-time endpoints within the 5s window; this is the A2 blocker."
+        )
+    return None
 
 
 def build_report(
@@ -267,7 +292,7 @@ def build_report(
             "episode_rejection_reasons": dict(collections.Counter(
                 str(row.get("rejection_reason") or "UNSPECIFIED") for row in rejected)),
         },
-        "option_bid_trackability_contract_data_v2": {
+        "contract_data_v2_scoreboard": {
             "basis": "single_option_executable_bid_contract_data_v2",
             "trackable_plans": sum(1 for row in nt if row.get("status") == "TRACKABLE"),
             "untrackable_plans": sum(1 for row in nt if row.get("status") == "UNTRACKABLE"),
@@ -293,7 +318,8 @@ def build_report(
                 "date_basis": "parent_decision_decided_at",
             },
         },
-        "a2_accrual_mvp_edge": a2_accrual_scoreboard(a2_summary),
+        "a2_accrual_scoreboard": a2_accrual_scoreboard(a2_summary),
+        "dense_source_gap_note": dense_source_gap_note(a2_summary),
         "direction_axis": direction_state_summary(d),
         "collector": {
             "enabled": collector.get("enabled"),
