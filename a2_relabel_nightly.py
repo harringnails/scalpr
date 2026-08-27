@@ -3,23 +3,35 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 
 DEFAULT_WORKTREE = Path("/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabel")
 DEFAULT_LIVE_ROOT = Path("/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7")
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800.0
+DEFAULT_KEYCHAIN_TIMEOUT_SECONDS = 30.0
+SECURITY_BIN = Path("/usr/bin/security")
+ALPACA_KEYCHAIN_ITEMS = {
+    "ALPACA_API_KEY": "scalpr.alpaca.paper.key",
+    "ALPACA_SECRET_KEY": "scalpr.alpaca.paper.secret",
+}
 REQUIRED_VERIFY_GATES = (
     "all_dense_run_labels_present",
     "provenance_and_frozen_rules_intact",
     "availability_rises_vs_tick_log",
     "every_flip_has_genuine_fresh_dense_quotes",
 )
+
+
+class KeychainCredentialError(RuntimeError):
+    """The nightly process could not read its required Keychain items."""
 
 
 @dataclass(frozen=True)
@@ -98,6 +110,44 @@ def parse_json_output(output: str, *, command: str) -> dict[str, Any]:
     return payload
 
 
+def load_alpaca_credentials_from_keychain(
+    *,
+    account: str | None = None,
+    timeout_seconds: float = DEFAULT_KEYCHAIN_TIMEOUT_SECONDS,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> dict[str, str]:
+    """Read only the Alpaca pair from Keychain, with no environment fallback."""
+    account = (account or getpass.getuser()).strip()
+    if not account:
+        raise KeychainCredentialError("keychain_account_unavailable")
+    credentials: dict[str, str] = {}
+    for environment_name, service in ALPACA_KEYCHAIN_ITEMS.items():
+        command = [
+            str(SECURITY_BIN), "find-generic-password",
+            "-a", account, "-s", service, "-w",
+        ]
+        try:
+            result = runner(
+                command, capture_output=True, text=True,
+                timeout=timeout_seconds, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise KeychainCredentialError(
+                f"keychain_timeout_service={service}"
+            ) from exc
+        except OSError as exc:
+            raise KeychainCredentialError(
+                f"keychain_launch_error_service={service}: {type(exc).__name__}"
+            ) from exc
+        secret = (result.stdout or "").strip()
+        if result.returncode != 0 or not secret:
+            raise KeychainCredentialError(
+                f"keychain_item_unavailable_service={service} "
+                f"exit={result.returncode}"
+            )
+        credentials[environment_name] = secret
+    return credentials
+
+
 def verify_passed(report: dict[str, Any]) -> tuple[bool, list[str]]:
     failures: list[str] = []
     if report.get("status") != "PASS":
@@ -133,10 +183,11 @@ def append_alert(path: Path, message: str, *, now: datetime) -> None:
 
 def _run_command(
     command: list[str], *, cwd: Path, timeout: float,
+    environment: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command, cwd=cwd, capture_output=True, text=True,
-        timeout=timeout, check=False)
+        timeout=timeout, check=False, env=environment)
 
 
 def run_nightly(
@@ -146,6 +197,7 @@ def run_nightly(
     timeout_seconds: float = DEFAULT_JOB_TIMEOUT_SECONDS,
     runner: Callable[..., subprocess.CompletedProcess[str]] = _run_command,
     notifier: Callable[[str], None] = macos_notification,
+    credential_loader: Callable[[], dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Run relabel then verify; alert on any command, parse, or gate failure."""
     now = now or datetime.now(timezone.utc)
@@ -176,16 +228,39 @@ def run_nightly(
         if not required.exists():
             return finish_failure(f"required_path_missing={required}")
 
+    command_environment: dict[str, str] | None = None
+    credential_source: str | None = None
+    launchd_service = os.environ.get("XPC_SERVICE_NAME")
+    if launchd_service:
+        stdout_parts.append(f"launchd_service={launchd_service}\n")
+    if credential_loader is not None:
+        try:
+            credentials = credential_loader()
+        except KeychainCredentialError as exc:
+            return finish_failure(str(exc))
+        except Exception as exc:
+            return finish_failure(
+                f"keychain_unexpected_error={type(exc).__name__}")
+        missing = sorted(set(ALPACA_KEYCHAIN_ITEMS) - set(credentials))
+        if missing:
+            return finish_failure(
+                "keychain_credentials_incomplete=" + ",".join(missing))
+        command_environment = os.environ.copy()
+        command_environment.update(credentials)
+        credential_source = "macos_keychain_security_cli"
+        stdout_parts.append(f"credential_source={credential_source}\n")
+
     try:
         relabel = runner(
             relabel_command(paths), cwd=paths.worktree,
-            timeout=timeout_seconds)
+            timeout=timeout_seconds, environment=command_environment)
     except subprocess.TimeoutExpired:
         return finish_failure(f"relabel_timeout_seconds={timeout_seconds:g}")
     except Exception as exc:
         return finish_failure(f"relabel_launch_error={type(exc).__name__}: {exc}")
     stdout_parts.append("=== RELABEL STDOUT ===\n" + (relabel.stdout or "") + "\n")
-    stderr_parts.append("=== RELABEL STDERR ===\n" + (relabel.stderr or "") + "\n")
+    if relabel.stderr:
+        stderr_parts.append("=== RELABEL STDERR ===\n" + relabel.stderr + "\n")
     if relabel.returncode != 0:
         return finish_failure(f"relabel_exit={relabel.returncode}")
     try:
@@ -196,13 +271,14 @@ def run_nightly(
     try:
         verify = runner(
             verify_command(paths), cwd=paths.worktree,
-            timeout=timeout_seconds)
+            timeout=timeout_seconds, environment=command_environment)
     except subprocess.TimeoutExpired:
         return finish_failure(f"verify_timeout_seconds={timeout_seconds:g}")
     except Exception as exc:
         return finish_failure(f"verify_launch_error={type(exc).__name__}: {exc}")
     stdout_parts.append("=== VERIFY STDOUT ===\n" + (verify.stdout or "") + "\n")
-    stderr_parts.append("=== VERIFY STDERR ===\n" + (verify.stderr or "") + "\n")
+    if verify.stderr:
+        stderr_parts.append("=== VERIFY STDERR ===\n" + verify.stderr + "\n")
     if verify.returncode != 0:
         return finish_failure(f"verify_exit={verify.returncode}")
     try:
@@ -228,6 +304,8 @@ def run_nightly(
         "status": "PASS",
         "clean_a2_labelable_episode_count": count,
         "records_appended": appended,
+        "credential_source": credential_source,
+        "launchd_service": launchd_service,
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
     }
@@ -241,7 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     report = run_nightly(
         NightlyPaths(args.worktree.resolve(), args.live_root.resolve()),
-        timeout_seconds=args.timeout_seconds)
+        timeout_seconds=args.timeout_seconds,
+        credential_loader=load_alpaca_credentials_from_keychain)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "PASS" else 1
 

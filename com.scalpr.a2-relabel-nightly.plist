@@ -6,11 +6,15 @@
     <string>com.scalpr.a2-relabel-nightly</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabel/a2_relabel_nightly.sh</string>
+        <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/.venv/bin/python</string>
+        <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabel/a2_relabel_nightly.py</string>
+        <string>--worktree</string>
+        <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabel</string>
+        <string>--live-root</string>
+        <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabel</string>
+    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7</string>
     <key>StartCalendarInterval</key>
     <array>
         <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>

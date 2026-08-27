@@ -7,10 +7,8 @@ A2_WORKTREE="/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7-a2-relabe
 A2_LIVE_ROOT="/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7"
 
 cd "$A2_WORKTREE" || exit 1
-# launchd does not source interactive shell profiles. This loader reads the
-# existing Keychain items without printing or persisting their values.
-source "$A2_WORKTREE/load_keychain_env.sh"
-
+# Manual compatibility entry point only. The Python process performs a strict,
+# bounded Keychain read and does not accept inherited credentials as proof.
 exec "$A2_LIVE_ROOT/.venv/bin/python" \
   "$A2_WORKTREE/a2_relabel_nightly.py" \
   --worktree "$A2_WORKTREE" \
