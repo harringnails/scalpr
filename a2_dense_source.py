@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 import requests
 
+import a2_accrual_store as accrual_store
 import a2_measurement as a2
 
 
@@ -28,7 +29,9 @@ SOURCE_VERSION = a2.DENSE_ENDPOINT_SOURCE
 BASE_URL = "https://data.alpaca.markets"
 QUOTES_PATH = "/v2/stocks/quotes"
 TRADES_PATH = "/v2/stocks/trades"
-DEFAULT_COMPARISON_PATH = a2.DEFAULT_OUTPUT_DIR / "a2_dense_source_comparison_v0.json"
+DEFAULT_DENSE_LABELS_PATH = accrual_store.DENSE_LABELS_PATH
+DEFAULT_DENSE_SUMMARY_PATH = accrual_store.DENSE_SUMMARY_PATH
+DEFAULT_COMPARISON_PATH = accrual_store.DENSE_COMPARISON_PATH
 DEFAULT_BIAS_PATH = a2.DEFAULT_OUTPUT_DIR / "a2_capture_gap_bias_v0.json"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
 DEFAULT_FETCH_DEADLINE_SECONDS = 300.0
@@ -330,8 +333,8 @@ def run_uniform_relabel(
     episodes_path: Path = a2.DEFAULT_EPISODES,
     tick_log_path: Path = a2.DEFAULT_TICK_LOG,
     quarantine_path: Path | None = None,
-    output_path: Path = a2.DEFAULT_OUTPUT_PATH,
-    summary_path: Path = a2.DEFAULT_SUMMARY_PATH,
+    output_path: Path = DEFAULT_DENSE_LABELS_PATH,
+    summary_path: Path = DEFAULT_DENSE_SUMMARY_PATH,
     comparison_path: Path = DEFAULT_COMPARISON_PATH,
 ) -> dict[str, Any]:
     quarantine_path = quarantine_path or episodes_path.with_name(a2.DEFAULT_QUARANTINE_MANIFEST.name)
@@ -651,7 +654,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def verify_uniform_relabel(
-    *, labels_path: Path = a2.DEFAULT_OUTPUT_PATH,
+    *, labels_path: Path = DEFAULT_DENSE_LABELS_PATH,
     comparison_path: Path = DEFAULT_COMPARISON_PATH,
 ) -> dict[str, Any]:
     comparison = json.loads(comparison_path.read_text())
@@ -710,8 +713,8 @@ def main(argv: list[str] | None = None) -> int:
     relabel.add_argument("--episodes", type=Path, default=a2.DEFAULT_EPISODES)
     relabel.add_argument("--tick-log", type=Path, default=a2.DEFAULT_TICK_LOG)
     relabel.add_argument("--quarantine", type=Path, default=a2.DEFAULT_QUARANTINE_MANIFEST)
-    relabel.add_argument("--labels", type=Path, default=a2.DEFAULT_OUTPUT_PATH)
-    relabel.add_argument("--summary", type=Path, default=a2.DEFAULT_SUMMARY_PATH)
+    relabel.add_argument("--labels", type=Path, default=DEFAULT_DENSE_LABELS_PATH)
+    relabel.add_argument("--summary", type=Path, default=DEFAULT_DENSE_SUMMARY_PATH)
     relabel.add_argument("--comparison", type=Path, default=DEFAULT_COMPARISON_PATH)
     _add_provider_limits(relabel)
 
@@ -722,7 +725,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_provider_limits(bias)
 
     verify = commands.add_parser("verify", help="verify dense provenance and genuine freshness flips")
-    verify.add_argument("--labels", type=Path, default=a2.DEFAULT_OUTPUT_PATH)
+    verify.add_argument("--labels", type=Path, default=DEFAULT_DENSE_LABELS_PATH)
     verify.add_argument("--comparison", type=Path, default=DEFAULT_COMPARISON_PATH)
 
     args = parser.parse_args(argv)

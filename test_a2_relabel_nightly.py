@@ -1,11 +1,13 @@
 """Fixture-only tests for nightly PASS/FAIL handling and live path isolation."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import plistlib
 import subprocess
 
+import a2_dense_source as dense
+import a2_measurement as a2
 import a2_relabel_nightly as nightly
 
 
@@ -66,6 +68,11 @@ def test_pass_parsing_logs_count_and_uses_only_explicit_live_paths(tmp_path):
     assert str(paths.comparison) in calls[1][0]
     assert "clean_a2_labelable_episode_count=7" in Path(result["stdout_log"]).read_text()
     assert Path(result["stderr_log"]).read_text().endswith("\n")
+    assert paths.labels.name == "a2_labels_dense_v0.jsonl"
+    assert paths.summary.name == "a2_summary_dense_v0.json"
+    assert paths.comparison.name == "a2_dense_source_comparison_v0.json"
+    assert paths.labels != paths.live_root / "v2_data/a2_measurement/a2_labels_v2.jsonl"
+    assert paths.summary != paths.live_root / "v2_data/a2_measurement/a2_summary_v2.json"
 
 
 def test_failed_verify_gate_notifies_and_appends_alert_log(tmp_path):
@@ -137,3 +144,69 @@ def test_launchd_plist_is_weekdays_at_2100_and_label_matches_filename():
         {"Weekday": weekday, "Hour": 21, "Minute": 0}
         for weekday in range(2, 7)
     ]
+
+
+class _WindowClient:
+    def historical_quotes(self, symbol, *, start, end):
+        boundary = end - timedelta(microseconds=1)
+        return [{
+            "provider_ts": boundary - timedelta(seconds=1),
+            "received_at": None,
+            "mid": 101.0,
+            "bid": 100.99,
+            "ask": 101.01,
+            "source": a2.DENSE_ENDPOINT_SOURCE,
+            "endpoint_source": a2.DENSE_ENDPOINT_SOURCE,
+        }]
+
+
+def test_wrapper_dense_outputs_survive_subsequent_legacy_materialize(tmp_path):
+    paths = _paths(tmp_path)
+    paths.episodes.write_text(json.dumps({
+        "episode_key": "wrapper-proof",
+        "episode_record_id": "record-wrapper-proof",
+        "decision_id": "decision-wrapper-proof",
+        "cohort_id": "low_reversal_v1",
+        "config_version": "entry-intelligence-config-v1.2.0",
+        "config_hash": "frozen-config-hash",
+        "symbol": "SPY",
+        "side": "CALL",
+        "session_date": "2026-08-14",
+        "decided_at": "2026-08-14T15:55:00+00:00",
+        "admitted": True,
+    }) + "\n")
+
+    def runner(command, **_kwargs):
+        if "relabel" in command:
+            payload = dense.run_uniform_relabel(
+                _WindowClient(), episodes_path=paths.episodes,
+                tick_log_path=paths.tick_log, quarantine_path=paths.quarantine,
+                output_path=paths.labels, summary_path=paths.summary,
+                comparison_path=paths.comparison)
+        else:
+            payload = dense.verify_uniform_relabel(
+                labels_path=paths.labels, comparison_path=paths.comparison)
+        return _completed(payload)
+
+    result = nightly.run_nightly(
+        paths, now=NOW, runner=runner, notifier=lambda _message: None)
+    dense_summary = json.loads(paths.summary.read_text())
+    dense_comparison = json.loads(paths.comparison.read_text())
+    dense_before = {
+        path: path.read_bytes()
+        for path in (paths.labels, paths.summary, paths.comparison)
+    }
+
+    legacy_labels = paths.live_root / "v2_data/a2_measurement/a2_labels_v2.jsonl"
+    legacy_summary = paths.live_root / "v2_data/a2_measurement/a2_summary_v2.json"
+    a2.materialize_a2(
+        episodes_path=paths.episodes, tick_log_path=paths.tick_log,
+        quarantine_path=paths.quarantine, output_path=legacy_labels,
+        summary_path=legacy_summary)
+
+    assert result["status"] == "PASS"
+    assert dense_summary["endpoint_source"] == a2.DENSE_ENDPOINT_SOURCE
+    assert dense_summary["clean_a2_labelable_episode_count"] == 1
+    assert dense_comparison["dense_available_count"] == 1
+    assert all(path.read_bytes() == before for path, before in dense_before.items())
+    assert legacy_summary.exists()

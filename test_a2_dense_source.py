@@ -244,3 +244,20 @@ def test_repeated_uniform_relabel_is_deterministic_and_does_not_duplicate(tmp_pa
 def test_dense_source_is_not_imported_by_server_startup_path():
     server_source = (dense.Path(dense.__file__).with_name("scalp_server.py")).read_text()
     assert "a2_dense_source" not in server_source
+
+
+def test_dense_output_defaults_do_not_overlap_live_server_legacy_store():
+    assert dense.DEFAULT_DENSE_LABELS_PATH.name == "a2_labels_dense_v0.jsonl"
+    assert dense.DEFAULT_DENSE_SUMMARY_PATH.name == "a2_summary_dense_v0.json"
+    assert dense.DEFAULT_COMPARISON_PATH.name == "a2_dense_source_comparison_v0.json"
+    assert dense.DEFAULT_DENSE_LABELS_PATH != a2.DEFAULT_OUTPUT_PATH
+    assert dense.DEFAULT_DENSE_SUMMARY_PATH != a2.DEFAULT_SUMMARY_PATH
+
+    root = dense.Path(dense.__file__).parent
+    live_writers = "\n".join(
+        (root / name).read_text()
+        for name in ("scalp_server.py", "entry_bid_collector_v1.py")
+    )
+    assert "a2_labels_dense_v0" not in live_writers
+    assert "a2_summary_dense_v0" not in live_writers
+    assert "a2_dense_source_comparison_v0" not in live_writers

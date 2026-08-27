@@ -49,11 +49,11 @@ class NightlyPaths:
 
     @property
     def labels(self) -> Path:
-        return self.live_root / "v2_data/a2_measurement/a2_labels_v2.jsonl"
+        return self.live_root / "v2_data/a2_measurement/a2_labels_dense_v0.jsonl"
 
     @property
     def summary(self) -> Path:
-        return self.live_root / "v2_data/a2_measurement/a2_summary_v2.json"
+        return self.live_root / "v2_data/a2_measurement/a2_summary_dense_v0.json"
 
     @property
     def comparison(self) -> Path:

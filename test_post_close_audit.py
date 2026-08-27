@@ -36,6 +36,9 @@ def test_admissions_and_outcome_revisions_are_counted_honestly():
         hypo_bid_ticks=[], collector={"collector_version": "v-test"},
         quarantine=[{"record_type": "QUARANTINE_ENTRY", "episode_record_id": "e1"}],
         a2_summary={
+            "endpoint_source": "alpaca_historical_stock_quote_v1",
+            "accrual_store": "dense_a2_v0",
+            "accrual_summary_path": "/live/v2_data/a2_measurement/a2_summary_dense_v0.json",
             "clean_a2_eligible_episode_count": 1,
             "clean_a2_labelable_episode_count": 1,
             "clean_a2_unavailable_episode_count": 0,
@@ -73,6 +76,9 @@ def test_admissions_and_outcome_revisions_are_counted_honestly():
     assert report["a2_accrual_mvp_edge"] == {
         "basis": "underlying_forward_return_a2_mvp_edge",
         "status": "MEASURED",
+        "endpoint_source": "alpaca_historical_stock_quote_v1",
+        "accrual_store": "dense_a2_v0",
+        "accrual_summary_path": "/live/v2_data/a2_measurement/a2_summary_dense_v0.json",
         "clean_a2_eligible_episode_count": 1,
         "clean_a2_labelable_episode_count": 1,
         "clean_a2_unavailable_episode_count": 0,
@@ -97,3 +103,14 @@ def test_evaluated_at_does_not_reassign_outcome_to_a_later_day():
         collector={})
     assert report["option_bid_trackability_contract_data_v2"]["completed_outcomes"] == 0
     assert report["option_bid_trackability_contract_data_v2"]["latest_outcome_statuses"] == {}
+
+
+def test_legacy_a2_summary_cannot_drive_authoritative_accrual():
+    scoreboard = audit.a2_accrual_scoreboard({
+        "endpoint_source": "live_tick_log",
+        "clean_a2_labelable_episode_count": 99,
+    })
+
+    assert scoreboard["status"] == "A2_MEASUREMENT_ERROR"
+    assert scoreboard["clean_a2_labelable_episode_count"] is None
+    assert scoreboard["error"] == "authoritative_dense_a2_provenance_required"

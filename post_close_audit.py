@@ -19,8 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import a2_accrual_store
+
 
 ROOT = Path(__file__).resolve().parent
+OPERATIVE_ROOT = Path("/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7")
 ENTRY_FILES = {
     "decision_packets": ROOT / "entry_intelligence_decisions_v1.jsonl",
     "episodes": ROOT / "entry_intelligence_episodes_v1.jsonl",
@@ -172,10 +175,20 @@ def a2_accrual_scoreboard(summary: dict[str, Any] | None) -> dict[str, Any]:
             "error": summary["measurement_error"],
             "clean_a2_labelable_episode_count": None,
         }
+    if summary.get("endpoint_source") != a2_accrual_store.DENSE_ENDPOINT_SOURCE:
+        return {
+            "basis": "underlying_forward_return_a2_mvp_edge",
+            "status": "A2_MEASUREMENT_ERROR",
+            "error": "authoritative_dense_a2_provenance_required",
+            "clean_a2_labelable_episode_count": None,
+        }
     count = summary.get("clean_a2_labelable_episode_count")
     return {
         "basis": "underlying_forward_return_a2_mvp_edge",
         "status": "MEASURED",
+        "endpoint_source": summary.get("endpoint_source"),
+        "accrual_store": summary.get("accrual_store", "dense_a2_v0"),
+        "accrual_summary_path": summary.get("accrual_summary_path"),
         "clean_a2_eligible_episode_count": summary.get("clean_a2_eligible_episode_count"),
         "clean_a2_labelable_episode_count": count,
         "clean_a2_unavailable_episode_count": summary.get("clean_a2_unavailable_episode_count"),
@@ -326,13 +339,8 @@ def main() -> int:
         raise SystemExit("no dated evidence available")
 
     try:
-        import a2_measurement
-        _labels, a2_summary = a2_measurement.measure_a2(
-            episodes_path=ENTRY_FILES["episodes"],
-            tick_log_path=ENTRY_FILES["tick_log"],
-            quarantine_path=ENTRY_FILES["episode_quarantine"],
-            session_date=audit_day,
-        )
+        a2_summary = a2_accrual_store.load_dense_summary(
+            OPERATIVE_ROOT / a2_accrual_store.DENSE_SUMMARY_PATH)
     except Exception as exc:
         a2_summary = {
             "measurement_error": f"{type(exc).__name__}: {str(exc)[:180]}",
