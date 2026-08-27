@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.scalpr.collector-liveness-alert</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/.venv/bin/python</string>
+    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/collector_liveness_alert.py</string>
+    <string>--once</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/collector_liveness_alert.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/collector_liveness_alert.err.log</string>
+</dict>
+</plist>
