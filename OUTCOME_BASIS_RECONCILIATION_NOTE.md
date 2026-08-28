@@ -25,6 +25,10 @@ An admitted reversal episode is eligible for the **A2 edge cohort** if it is:
 
 Progress toward the edge verdict = **count of clean, A2-labelable episodes accruing toward ≥200** — *not* option-bid trackability. On Aug-14 that count moved **0 → 1** (pending confirmation that SPY quotes cover the 11:55 ET episode's 60-minute horizon). The contract-data-v2 NO-GO is a separate scoreboard.
 
+## Audit wording rule
+
+In daily audits, label the retired option-bid scoreboard as **informational / expected-empty** whenever the admitted episode is `NO_POINT_IN_TIME_CONTRACT`. Do not present that scoreboard as the study go/no-go. The study gate is the A2 accrual and post-warmup freshness path only.
+
 ## What does NOT change
 
 - The A2 edge test still requires: frozen detector, non-overlap dedup, session-block matched null (`p=(k+1)/(n+1)`), 4-fold chronological walk-forward, ≥200 episodes, and the frozen verdict rule. This note changes **none** of that inferential bar.

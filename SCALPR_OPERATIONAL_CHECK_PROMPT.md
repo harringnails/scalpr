@@ -84,6 +84,15 @@ Green means:
 Safety fields should read `execution_authority: false`, `guard_access: false`,
 `paper_shadow_only: true` on every study endpoint. Flag it loudly if not.
 
+## Step 3b — Separate the two scoreboards
+
+The daily audit must report these as distinct scoreboards and must not conflate them:
+
+- `contract-data v2` / executable-bid trackability: retired option-bid basis, informational only. A `NO_POINT_IN_TIME_CONTRACT` episode, zero contracts, zero bid ticks, or zero outcomes is expected-empty and does **not** gate the MVP.
+- `A2 accrual` / post-warmup freshness: the actual study gate. Report clean A2-labelable episode count and post-warmup direction-axis freshness separately.
+
+When checking direction freshness, verify whether `MISSING` rows are warmup-only or genuinely post-warmup by timestamp. If the `MISSING` rows fall inside the warmup window, say so explicitly and do not treat that as a freshness regression.
+
 ## Step 4 — Accumulation checks (later in the session)
 
 ```
