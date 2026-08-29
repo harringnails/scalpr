@@ -257,7 +257,7 @@ def test_launchd_plist_is_weekdays_at_2100_and_label_matches_filename():
     schedule = plist["StartCalendarInterval"]
     assert schedule == [
         {"Weekday": weekday, "Hour": 21, "Minute": 0}
-        for weekday in range(2, 7)
+        for weekday in range(1, 6)
     ]
 
 
