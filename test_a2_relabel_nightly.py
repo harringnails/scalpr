@@ -19,6 +19,7 @@ def _paths(tmp_path):
     live = tmp_path / "live"
     worktree.mkdir()
     (worktree / "a2_dense_source.py").write_text("# fixture\n")
+    (worktree / "a2_accrual_status.py").write_text("# fixture\n")
     (live / ".venv/bin").mkdir(parents=True)
     (live / ".venv/bin/python").write_text("")
     (live / "entry_intelligence_episodes_v1.jsonl").write_text("")
@@ -39,12 +40,20 @@ def _pass_report():
     }
 
 
+def _accrual_completed():
+    return subprocess.CompletedProcess(
+        args=[], returncode=0,
+        stdout="A2 accrual: 9 / 200\nProjection: UNSTABLE_INSUFFICIENT_SAMPLE\n",
+        stderr="")
+
+
 def test_pass_parsing_logs_count_and_uses_only_explicit_live_paths(tmp_path):
     paths = _paths(tmp_path)
     calls = []
     responses = iter([
         _completed({"clean_a2_labelable_episode_count": 7, "records_appended": 2}),
         _completed(_pass_report()),
+        _accrual_completed(),
     ])
 
     def runner(command, **kwargs):
@@ -66,7 +75,11 @@ def test_pass_parsing_logs_count_and_uses_only_explicit_live_paths(tmp_path):
     assert str(paths.comparison) in calls[0][0]
     assert str(paths.labels) in calls[1][0]
     assert str(paths.comparison) in calls[1][0]
+    assert str(paths.summary) in calls[2][0]
+    assert str(paths.labels) in calls[2][0]
+    assert str(paths.accrual_status) in calls[2][0]
     assert "clean_a2_labelable_episode_count=7" in Path(result["stdout_log"]).read_text()
+    assert "A2 accrual: 9 / 200" in Path(result["stdout_log"]).read_text()
     assert Path(result["stderr_log"]).read_text() == ""
     assert paths.labels.name == "a2_labels_dense_v0.jsonl"
     assert paths.summary.name == "a2_summary_dense_v0.json"
@@ -104,6 +117,7 @@ def test_nightly_requires_keychain_and_does_not_log_secrets(tmp_path, monkeypatc
     responses = iter([
         _completed({"clean_a2_labelable_episode_count": 7, "records_appended": 0}),
         _completed(_pass_report()),
+        _accrual_completed(),
     ])
 
     def runner(command, **kwargs):
@@ -163,6 +177,26 @@ def test_failed_verify_gate_notifies_and_appends_alert_log(tmp_path):
     assert len(notifications) == 1
     assert "every_flip_has_genuine_fresh_dense_quotes=False" in notifications[0]
     assert notifications[0] in paths.alert_log.read_text()
+
+
+def test_failed_accrual_status_fails_nightly_job_closed(tmp_path):
+    paths = _paths(tmp_path)
+    responses = iter([
+        _completed({"clean_a2_labelable_episode_count": 7, "records_appended": 0}),
+        _completed(_pass_report()),
+        subprocess.CompletedProcess(
+            args=[], returncode=2, stdout="",
+            stderr="A2 accrual unavailable: dense_a2_summary_missing"),
+    ])
+
+    result = nightly.run_nightly(
+        paths, now=NOW,
+        runner=lambda *_args, **_kwargs: next(responses),
+        notifier=lambda _message: None)
+
+    assert result["status"] == "FAIL"
+    assert result["error"] == "accrual_status_exit=2"
+    assert "dense_a2_summary_missing" in Path(result["stderr_log"]).read_text()
 
 
 def test_non_json_or_nonzero_command_is_fail_closed(tmp_path):
@@ -264,9 +298,12 @@ def test_wrapper_dense_outputs_survive_subsequent_legacy_materialize(tmp_path):
                 tick_log_path=paths.tick_log, quarantine_path=paths.quarantine,
                 output_path=paths.labels, summary_path=paths.summary,
                 comparison_path=paths.comparison)
-        else:
+        elif "verify" in command:
             payload = dense.verify_uniform_relabel(
                 labels_path=paths.labels, comparison_path=paths.comparison)
+            return _completed(payload)
+        else:
+            return _accrual_completed()
         return _completed(payload)
 
     result = nightly.run_nightly(

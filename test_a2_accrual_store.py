@@ -30,3 +30,14 @@ def test_legacy_or_missing_summary_fails_closed(tmp_path):
         store.load_dense_summary(legacy)
     with pytest.raises(store.DenseAccrualStoreError, match="summary_missing"):
         store.load_dense_summary(tmp_path / "missing.json")
+
+
+def test_dense_labels_reject_mixed_provenance(tmp_path):
+    labels = tmp_path / "labels.jsonl"
+    labels.write_text(json.dumps({
+        "endpoint_source": "live_tick_log",
+        "label_status": "AVAILABLE",
+    }) + "\n")
+
+    with pytest.raises(store.DenseAccrualStoreError, match="provenance_mismatch"):
+        store.load_dense_labels(labels)

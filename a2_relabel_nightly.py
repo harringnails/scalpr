@@ -48,6 +48,10 @@ class NightlyPaths:
         return self.worktree / "a2_dense_source.py"
 
     @property
+    def accrual_script(self) -> Path:
+        return self.worktree / "a2_accrual_status.py"
+
+    @property
     def episodes(self) -> Path:
         return self.live_root / "entry_intelligence_episodes_v1.jsonl"
 
@@ -70,6 +74,10 @@ class NightlyPaths:
     @property
     def comparison(self) -> Path:
         return self.live_root / "v2_data/a2_measurement/a2_dense_source_comparison_v0.json"
+
+    @property
+    def accrual_status(self) -> Path:
+        return self.live_root / "v2_data/a2_measurement/a2_accrual_status_v0.json"
 
     @property
     def log_dir(self) -> Path:
@@ -97,6 +105,15 @@ def verify_command(paths: NightlyPaths) -> list[str]:
         str(paths.python), str(paths.dense_script), "verify",
         "--labels", str(paths.labels),
         "--comparison", str(paths.comparison),
+    ]
+
+
+def accrual_status_command(paths: NightlyPaths) -> list[str]:
+    return [
+        str(paths.python), str(paths.accrual_script),
+        "--summary", str(paths.summary),
+        "--labels", str(paths.labels),
+        "--output", str(paths.accrual_status),
     ]
 
 
@@ -224,7 +241,10 @@ def run_nightly(
             "stderr_log": str(stderr_path),
         }
 
-    for required in (paths.python, paths.dense_script, paths.episodes, paths.tick_log):
+    for required in (
+        paths.python, paths.dense_script, paths.accrual_script,
+        paths.episodes, paths.tick_log,
+    ):
         if not required.exists():
             return finish_failure(f"required_path_missing={required}")
 
@@ -289,6 +309,21 @@ def run_nightly(
     if not passed:
         return finish_failure("verify_gates_failed=" + ",".join(failures))
 
+    try:
+        accrual = runner(
+            accrual_status_command(paths), cwd=paths.worktree,
+            timeout=timeout_seconds, environment=command_environment)
+    except subprocess.TimeoutExpired:
+        return finish_failure(f"accrual_status_timeout_seconds={timeout_seconds:g}")
+    except Exception as exc:
+        return finish_failure(
+            f"accrual_status_launch_error={type(exc).__name__}: {exc}")
+    stdout_parts.append("=== ACCRUAL STATUS ===\n" + (accrual.stdout or "") + "\n")
+    if accrual.stderr:
+        stderr_parts.append("=== ACCRUAL STATUS STDERR ===\n" + accrual.stderr + "\n")
+    if accrual.returncode != 0:
+        return finish_failure(f"accrual_status_exit={accrual.returncode}")
+
     count = relabel_report.get("clean_a2_labelable_episode_count")
     if not isinstance(count, int) or count < 0:
         return finish_failure(f"invalid_clean_labelable_episode_count={count!r}")
@@ -306,6 +341,7 @@ def run_nightly(
         "records_appended": appended,
         "credential_source": credential_source,
         "launchd_service": launchd_service,
+        "accrual_status_path": str(paths.accrual_status),
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
     }

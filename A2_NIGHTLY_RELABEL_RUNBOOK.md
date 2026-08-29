@@ -34,6 +34,14 @@ legacy `live_tick_log` cross-check. It does not write any dense path. The dense
 summary is the authoritative source for clean A2 accrual and the future edge
 harness; `post_close_audit.py` fails closed rather than substituting legacy data.
 
+After dense verification, the nightly job runs `a2_accrual_status.py` and writes
+`v2_data/a2_measurement/a2_accrual_status_v0.json`. Its dated stdout log includes
+the non-overlapping `N/200`, observed rate per XNYS trading session and
+five-session week, and the hedged projection. Below 30 episodes or 15 elapsed
+accrual sessions the projection is explicitly `UNSTABLE_INSUFFICIENT_SAMPLE`
+and reports a wide planning range rather than a promoted completion date. The
+projection never changes the frozen 200-episode verdict gate.
+
 ## Schedule
 
 The plist label is `com.scalpr.a2-relabel-nightly`. It runs Monday through
@@ -106,7 +114,7 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl print "$LABEL" | grep -E "state|last exit|runs|program"
 LATEST_OUT="$(ls -t "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/v2_data/a2_measurement/nightly_logs/"*.out.log | head -1)"
 LATEST_ERR="${LATEST_OUT/.out.log/.err.log}"
-grep -E "launchd_service=com.scalpr.a2-relabel-nightly|credential_source=macos_keychain_security_cli|SUCCESS verify=PASS" "$LATEST_OUT"
+grep -E "launchd_service=com.scalpr.a2-relabel-nightly|credential_source=macos_keychain_security_cli|SUCCESS verify=PASS|A2 accrual: .* / 200|Projection:" "$LATEST_OUT"
 test ! -s "$LATEST_ERR"
 
 "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/.venv/bin/python" \
