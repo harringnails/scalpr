@@ -17,8 +17,8 @@
   <key>StartInterval</key>
   <integer>60</integer>
   <key>StandardOutPath</key>
-  <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/collector_liveness_alert.out.log</string>
+  <string>/Users/natalieharrington/Library/Logs/scalpr/liveness.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/collector_liveness_alert.err.log</string>
+  <string>/Users/natalieharrington/Library/Logs/scalpr/liveness.err.log</string>
 </dict>
 </plist>
