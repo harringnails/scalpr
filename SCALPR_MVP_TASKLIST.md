@@ -73,9 +73,9 @@ Pre-reg spec: `A2_OUTCOME_BASIS_SPEC.md`.
 
 ## Parallel / standing research tracks (not on the MVP critical path)
 
-- **Dealer Pressure Advisory Study** (`DEALER_PRESSURE_ADVISORY_STUDY_SPEC.md`) — UW authenticated; next is the real Step 0 field audit (are per-trade delta/gamma/underlying point-in-time?). Denser-signal candidate.
-- **IVolatility research annex** (`IVOLATILITY_RESEARCH_ANNEX_PROPOSAL.md`) — IVOL authenticated; Stage P/D fidelity probe when a reference capture exists.
-- **CVD-Lab** (separate repo) — Databento MES data engineering strong; detector v2 fell short of the 100-episode floor (96); freeze v2, test on fresh out-of-sample sessions.
+- **Dealer Pressure Advisory Study** (`DEALER_PRESSURE_ADVISORY_STUDY_SPEC.md`) — parked after the optional UW subscription was canceled on 2026-08-29.
+- **IVolatility research annex** (`IVOLATILITY_RESEARCH_ANNEX_PROPOSAL.md`) — parked after the optional IVolatility subscription was canceled on 2026-08-29.
+- **CVD-Lab** (separate repo) — parked after the optional Databento subscription was canceled on 2026-08-29; prior detector v2 remains below the 100-episode floor (96).
 - **Regime Layer v0** (`REGIME_LAYER_SPEC_v0.md`) — deterministic trend/range/high-vol tagger (efficiency ratio + ATR percentile), causal/point-in-time, advisory-only, no admission authority. Built + tested; attaches `regime_tag` to episodes. Stage-1a viability report built (`regime_distribution_v0.py`, currently `INSUFFICIENT_TAGGING` on the empty clean set). Conditions on the v1.2 clean stream; Stage-2 gated on Stage-1a = `VIABLE`.
 
 ## Ordering rationale

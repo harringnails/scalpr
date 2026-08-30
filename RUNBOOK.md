@@ -115,11 +115,10 @@ password, service-account key, `.env`, or `scalp.keys` to the repository.
 
 ### Read-only provider capture
 
-- `restart.sh` enables Unusual Whales SPY flow capture at a maximum cadence of
-  one poll per minute from 09:30 through 16:15 ET on weekdays.
-- IVolatility fetches a bounded SPY 0-2 DTE EOD call/put chain once after
-  16:20 ET. A PENDING or transient response is retained as raw evidence and
-  retried after 15 minutes; it is never promoted as a complete snapshot.
+- The optional Unusual Whales and IVolatility subscriptions were canceled on
+  2026-08-29. Both restart paths explicitly set their capture flags to `0`.
+- Historical provider evidence and adapters remain intact, but no new UW flow
+  polls or IVolatility EOD chain requests are expected.
 - `/api/v2/institutional-flow/status` and
   `/api/v2/options-intelligence/status` show configuration, store counts, and
   the most recent capture result. Neither endpoint starts a broker action.

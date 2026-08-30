@@ -74,10 +74,10 @@ Green means:
 
 - Entry Intelligence: `enabled: true`, `state: ACTIVE_RTH_CAPTURE` during RTH
   (`DISABLED_DEFAULT_OFF` means the flag was never set)
-- IVolatility: `enabled: true`, `capture_running: true`,
-  `reason: scheduled_eod_capture`
-- Unusual Whales: `status: AVAILABLE`, `ingestion_running: true`,
-  `last_ingestion` timestamped today, `last_error: null`
+- IVolatility: `enabled: false`, `capture_running: false` — expected because
+  the optional subscription is canceled and capture is intentionally disabled.
+- Unusual Whales: `ingestion_running: false` — expected because the optional
+  subscription is canceled and capture is intentionally disabled.
 - Cloud SQL: `worker_running: true`, and `mirror.updated_at` dated **today**
   (a stale date means the worker is up but not actually mirroring)
 
@@ -111,8 +111,8 @@ sets them:
 | Subsystem | Flag |
 |---|---|
 | Entry Intelligence bid collector | `ENTRY_INTEL_BID_CAPTURE_ENABLED=1` |
-| Unusual Whales ingestion | `SCALPR_UW_INGESTION_ENABLED=1` |
-| IVolatility EOD capture | `SCALPR_IVOL_CAPTURE_ENABLED=1` |
+| Unusual Whales ingestion | `SCALPR_UW_INGESTION_ENABLED=0` (subscription canceled) |
+| IVolatility EOD capture | `SCALPR_IVOL_CAPTURE_ENABLED=0` (subscription canceled) |
 | Cloud SQL mirror worker | `SCALPR_CLOUDSQL_MIRROR_ENABLED=1` |
 
 `restart.sh` also exports `WAVE_RIDING_ENABLED=1` and

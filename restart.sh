@@ -58,11 +58,10 @@ export WAVE_RIDING_ENABLED=1
 # Runs in a bounded research worker, never in the Guard execution loop.
 export INCUBATION_SHADOW_ENABLED=1
 
-# Read-only provider capture. Both workers are isolated from Guard/order paths.
-# UW is paced to one request/minute during the session; IVolatility captures one
-# bounded SPY 0-2 DTE EOD chain after the close.
-export SCALPR_UW_INGESTION_ENABLED=1
-export SCALPR_IVOL_CAPTURE_ENABLED=1
+# Optional provider subscriptions are retired. Keep both workers explicitly off
+# so stale Keychain items cannot trigger failed vendor calls on a future restart.
+export SCALPR_UW_INGESTION_ENABLED=0
+export SCALPR_IVOL_CAPTURE_ENABLED=0
 export SCALPR_CLOUDSQL_MIRROR_ENABLED=1
 
 # Entry Intelligence executable-bid collector ON for approved pre-lock capture.
@@ -78,20 +77,12 @@ export EXPLAIN_LAYER_ENABLED=0
 echo "Starting Scalpr server with Alpaca SIP in the background…"
 echo "Wave Riding shadow observer: ON (Cohort A)"
 echo "Entry Incubation shadow observer: ON (Cohort A)"
-echo "Unusual Whales shadow capture: ON (session only, 60s cadence)"
-echo "IVolatility EOD capture: ON (SPY 0-2 DTE, once after close)"
+echo "Unusual Whales shadow capture: OFF (subscription canceled)"
+echo "IVolatility EOD capture: OFF (subscription canceled)"
 echo "Entry executable-bid collector: ON (pre-lock dry-run; no order authority)"
 echo "Evidence explanation: deterministic only (external AI adapter OFF)"
-if [ "$SCALPR_UW_KEYCHAIN_STATUS" = "missing" ]; then
-  echo "Unusual Whales Workup: OFF (token not found in environment or Keychain)"
-else
-  echo "Unusual Whales Workup: ON (credential source: $SCALPR_UW_KEYCHAIN_STATUS)"
-fi
-if [ "$SCALPR_IVOL_KEYCHAIN_STATUS" = "missing" ]; then
-  echo "IVolatility Intelligence: OFF (API key not found in environment or Keychain)"
-else
-  echo "IVolatility Intelligence: ON (credential source: $SCALPR_IVOL_KEYCHAIN_STATUS; EOD capture only)"
-fi
+echo "Unusual Whales Workup: OFF (subscription canceled; capture flag disabled)"
+echo "IVolatility Intelligence: OFF (subscription canceled; capture flag disabled)"
 
 # Retire the optional mirror from the prior server lifecycle. The new server
 # starts its replacement as an isolated no-broker subprocess.

@@ -454,6 +454,15 @@ def test_restart_requires_direct_flat_account_and_open_order_proof():
     assert 'proof.get("mode") == "paper"' in source
 
 
+def test_cancelled_provider_subscriptions_stay_disabled_in_restart_paths():
+    for path in ("restart.sh", "restart_cron.sh"):
+        source = open(path, encoding="utf-8").read()
+        assert "SCALPR_UW_INGESTION_ENABLED=0" in source
+        assert "SCALPR_IVOL_CAPTURE_ENABLED=0" in source
+        assert "SCALPR_UW_INGESTION_ENABLED=1" not in source
+        assert "SCALPR_IVOL_CAPTURE_ENABLED=1" not in source
+
+
 def test_cron_restart_has_safe_proof_and_runtime_flag_parity():
     source = open("restart_cron.sh", encoding="utf-8").read()
     assert "/api/account-flat-proof" in source
@@ -464,8 +473,8 @@ def test_cron_restart_has_safe_proof_and_runtime_flag_parity():
     for flag in (
         "WAVE_RIDING_ENABLED=1",
         "INCUBATION_SHADOW_ENABLED=1",
-        "SCALPR_UW_INGESTION_ENABLED=1",
-        "SCALPR_IVOL_CAPTURE_ENABLED=1",
+        "SCALPR_UW_INGESTION_ENABLED=0",
+        "SCALPR_IVOL_CAPTURE_ENABLED=0",
         "SCALPR_CLOUDSQL_MIRROR_ENABLED=1",
         "ENTRY_INTEL_BID_CAPTURE_ENABLED=1",
         "EXPLAIN_LAYER_ENABLED=0",
