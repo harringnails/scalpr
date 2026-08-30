@@ -615,6 +615,17 @@ def test_dashboard_uses_progressive_disclosure_without_changing_trade_controls()
         assert f'id="{element_id}"' in html
 
 
+def test_dashboard_market_sign_uses_collector_window_and_fails_unlit():
+    html = ss.DASHBOARD.read_text()
+    assert 'id="marketOpenWord"' in html
+    assert 'id="marketClosedWord"' in html
+    assert "fetch('/api/entry-intelligence/collector')" in html
+    assert "typeof status.market_window !== 'boolean'" in html
+    assert "renderMarketSign(null)" in html
+    assert "scheduleRefresh(refreshMarketSign, 5000)" in html
+    assert "@media (prefers-reduced-motion:reduce)" in html
+
+
 def test_all_dashboard_trade_actions_are_one_click_without_approval_popups():
     html = ss.DASHBOARD.read_text()
     assert "Sell 100% of ${sym} at market right now?" not in html

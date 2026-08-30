@@ -117,6 +117,24 @@
     border:1px solid var(--edge); border-radius:999px; background:#10161c; font-size:11px; }
   .status-strip .badge { margin-left:0; }
   .status-strip #microRead { color:var(--amber); border-color:#4a3712; background:#241b0a; }
+  .market-sign { display:inline-flex; flex-direction:column; align-items:center; gap:1px; padding:5px 10px;
+    border:1px solid #222b39; border-radius:8px; background:#090c11;
+    box-shadow:inset 0 0 14px rgba(0,0,0,.72); }
+  .market-word { font-family:'Space Grotesk',sans-serif; font-size:10px; font-weight:900;
+    letter-spacing:.16em; line-height:1.05; color:#29313c; transition:color .2s,text-shadow .2s; }
+  .market-word.on-red { color:#ff6868; text-shadow:0 0 3px #ff9b9b,0 0 8px #ff4242,
+    0 0 15px #d91622; animation:marketFlickerRed 6.5s infinite steps(1); }
+  .market-word.on-green { color:#5cff9f; text-shadow:0 0 3px #a1ffc8,0 0 8px #34ef80,
+    0 0 15px #05bd58; animation:marketFlickerGreen 7s infinite steps(1); }
+  @keyframes marketFlickerRed {
+    0%,92%,94%,97%,100% { opacity:1; } 93% { opacity:.62; } 95.5% { opacity:.8; }
+  }
+  @keyframes marketFlickerGreen {
+    0%,88%,90%,96%,100% { opacity:1; } 89% { opacity:.65; } 95% { opacity:.82; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .market-word.on-red,.market-word.on-green { animation:none; }
+  }
   .utility-row { display:flex; justify-content:flex-end; margin-top:8px; }
   .research-drawer { width:100%; border:0; }
   .research-drawer > summary { cursor:pointer; list-style:none; color:var(--accent); padding:2px 0 8px;
@@ -252,7 +270,10 @@
     </div>
     <div class="status-strip" aria-label="Current market and feed status">
       <span id="modeBadge" class="badge paper">PAPER</span>
-      <div class="market" id="market">—</div>
+      <div class="market-sign" id="marketSign" role="status" aria-live="polite" aria-label="Market status unavailable">
+        <span class="market-word" id="marketOpenWord">OPEN</span>
+        <span class="market-word" id="marketClosedWord">CLOSED</span>
+      </div>
       <div class="tag" id="microRead">—</div>
     </div>
   </header>
@@ -261,6 +282,7 @@
     <details id="researchDiagnostics" class="research-drawer" ontoggle="refreshResearchDiagnostics()">
       <summary class="tag"><span aria-hidden="true">diagnostics</span><span class="sr-only">Research diagnostics — non-blocking, no approval required</span></summary>
       <div class="research-body">
+        <div class="market" id="market">—</div>
         <div class="research-actions">
           <button type="button" id="premktBtn" onclick="runPremarket()">Premarket assessment</button>
         </div>
@@ -1012,6 +1034,39 @@ async function resumeGuard(sym) {
   });
 }
 
+function renderMarketSign(marketOpen) {
+  const openWord = $('marketOpenWord');
+  const closedWord = $('marketClosedWord');
+  const sign = $('marketSign');
+  openWord.className = 'market-word' + (marketOpen === true ? ' on-green' : '');
+  closedWord.className = 'market-word' + (marketOpen === false ? ' on-red' : '');
+  const label = marketOpen === true
+    ? 'Market open'
+    : marketOpen === false
+      ? 'Market closed'
+      : 'Market status unavailable';
+  sign.setAttribute('aria-label', label);
+  sign.dataset.state = marketOpen === true
+    ? 'open'
+    : marketOpen === false
+      ? 'closed'
+      : 'unavailable';
+}
+
+async function refreshMarketSign() {
+  try {
+    const response = await fetch('/api/entry-intelligence/collector');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const status = await response.json();
+    if (typeof status.market_window !== 'boolean') {
+      throw new Error('market_window unavailable');
+    }
+    renderMarketSign(status.market_window);
+  } catch (_error) {
+    renderMarketSign(null);
+  }
+}
+
 async function refresh() {
   try {
     const s = await (await fetch('/api/state')).json();
@@ -1590,7 +1645,8 @@ async function refreshExploSummary() {
   } catch (e) { $('exploSummary').textContent = 'exploratory summary unavailable'; }
 }
 
-refresh(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
+renderMarketSign(null);
+refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
 if (location.protocol === 'file:') {
   showMsg('This page is opened as a file — the API cannot work this way. Run "python scalp_server.py" and open http://localhost:8420 instead.', true);
 } else {
@@ -1609,6 +1665,7 @@ function scheduleRefresh(fn, cadenceMs) {
   return () => clearTimeout(timer);
 }
 scheduleRefresh(refresh, 500);
+scheduleRefresh(refreshMarketSign, 5000);
 scheduleRefresh(refreshJournal, 10000);
 scheduleRefresh(refreshHoldings, 3000);
 scheduleRefresh(refreshStats, 10000);
