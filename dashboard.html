@@ -14,8 +14,8 @@
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text);
          font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:13px; }
-  .wrap { max-width:1060px; margin:0 auto; padding:20px 16px 60px; }
-  h1 { font-family:'Space Grotesk',sans-serif; font-size:38px; margin:0; letter-spacing:.04em; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px 20px 60px; }
+  h1 { font-family:'Space Grotesk',sans-serif; font-size:34px; margin:0; letter-spacing:.04em; }
   h1 span.slash { color:var(--blade); }
   h2 { font-family:'Space Grotesk',sans-serif; font-size:13px; letter-spacing:.1em;
        text-transform:uppercase; color:var(--dim); margin:26px 0 10px; }
@@ -59,7 +59,7 @@
     75%  { opacity:1; }
     100% { opacity:0; }
   }
-  .panel { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
   .market { color:var(--steel); font-size:12px; margin-top:10px; }
   form .row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
   label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--dim); }
@@ -101,77 +101,195 @@
   #msg { min-height:18px; font-size:12px; margin-top:8px; }
   #msg.err { color:var(--blade); } #msg.ok { color:var(--green); }
   .foot { color:var(--faint); font-size:11px; margin-top:34px; line-height:1.6; }
+  .app-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+  .brand-line { display:flex; align-items:center; flex-wrap:wrap; }
+  .header-actions { display:flex; gap:8px; align-items:center; }
+  .utility-menu { position:relative; }
+  .utility-menu summary { list-style:none; cursor:pointer; border:1px solid var(--edge);
+    border-radius:6px; padding:8px 11px; color:var(--dim); font-size:11px; }
+  .utility-menu summary::-webkit-details-marker { display:none; }
+  .utility-menu[open] summary { color:var(--text); border-color:var(--faint); }
+  .utility-popover { position:absolute; right:0; top:calc(100% + 6px); min-width:210px;
+    background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:10px;
+    z-index:30; box-shadow:0 12px 28px rgba(0,0,0,.45); }
+  .status-strip { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px;
+    padding:9px 12px; background:#10161c; border:1px solid var(--edge); border-radius:8px; }
+  .status-dot { width:7px; height:7px; border-radius:50%; background:var(--steel); box-shadow:0 0 0 3px #7fb4d614; }
+  .status-strip .market { margin:0; }
+  .status-divider { color:var(--faint); }
+  .utility-row { display:flex; justify-content:flex-end; margin-top:8px; }
+  .research-drawer { width:100%; border:1px solid var(--edge); border-radius:8px; }
+  .research-drawer > summary { cursor:pointer; list-style:none; color:var(--steel); padding:8px 11px; }
+  .research-drawer > summary::-webkit-details-marker { display:none; }
+  .research-drawer > summary::before { content:'+'; display:inline-block; width:18px; color:var(--dim); }
+  .research-drawer[open] > summary::before { content:'−'; }
+  .research-body { border-top:1px solid var(--edge); padding:10px; }
+  .research-actions { display:flex; justify-content:flex-end; margin-bottom:8px; }
+  .trade-shell { padding:0; overflow:hidden; }
+  .trade-step { padding:18px; border-bottom:1px solid var(--edge); }
+  .trade-step:last-child { border-bottom:0; }
+  .step-head { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .step-number { color:var(--steel); font-family:'Space Grotesk',sans-serif; font-size:11px;
+    font-weight:700; letter-spacing:.12em; }
+  .step-title { font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:700; }
+  .step-note { color:var(--dim); font-size:11px; margin-left:auto; }
+  .field-grid { display:grid; grid-template-columns:110px 120px minmax(180px,1fr) minmax(180px,1fr) auto;
+    gap:10px; align-items:end; }
+  .position-grid { display:grid; grid-template-columns:minmax(140px,180px) minmax(240px,1fr);
+    gap:10px; max-width:590px; }
+  .contract-builder { background:transparent; border:0; padding:0; margin:0; }
+  .quote-strip { display:none; margin-top:14px; padding:12px; background:var(--bg);
+    border:1px solid var(--edge); border-radius:7px; }
+  .manual-entry { margin-top:10px; }
+  .manual-entry summary { cursor:pointer; color:var(--dim); font-size:11px; }
+  .manual-entry label { margin-top:8px; max-width:310px; }
+  .settings-panel { background:var(--bg); border:1px solid var(--edge); border-radius:8px; }
+  .settings-panel + .settings-panel { margin-top:10px; }
+  .settings-panel > summary { list-style:none; cursor:pointer; padding:13px 14px; display:flex;
+    align-items:center; gap:12px; }
+  .settings-panel > summary::-webkit-details-marker { display:none; }
+  .settings-panel > summary::after { content:'+'; color:var(--dim); margin-left:auto; font-size:16px; }
+  .settings-panel[open] > summary::after { content:'−'; }
+  .settings-name { color:var(--text); font-weight:700; }
+  .settings-summary { color:var(--dim); font-size:11px; }
+  .settings-body { padding:0 14px 14px; border-top:1px solid var(--edge); }
+  .settings-body .row { margin-top:12px; }
+  .ladder-wrap { display:grid; grid-template-columns:minmax(350px,1fr) minmax(260px,.8fr);
+    gap:24px; align-items:start; margin-top:12px; }
+  table.ladder { width:100%; }
+  table.ladder th { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+    font-weight:500; text-align:left; padding:0 6px 6px 0; }
+  table.ladder td { border-top:1px solid var(--edge); padding:7px 6px 7px 0; }
+  table.ladder td:last-child { width:38px; }
+  table.ladder button { padding:7px 9px; color:var(--dim); }
+  .metric-input { display:flex; align-items:center; gap:6px; }
+  .metric-input input { width:90px; }
+  .metric-input span { color:var(--dim); }
+  .timing-grid { display:grid; grid-template-columns:repeat(2,minmax(130px,1fr)); gap:10px; }
+  .inline-help { position:relative; display:inline-block; margin:9px 0 0 8px; vertical-align:middle; }
+  .inline-help summary { display:flex; align-items:center; justify-content:center; width:17px; height:17px;
+    list-style:none; cursor:pointer; border:1px solid var(--dim); border-radius:50%; color:var(--dim);
+    font-size:10px; }
+  .inline-help summary::-webkit-details-marker { display:none; }
+  .inline-help div { position:absolute; left:0; top:24px; width:290px; padding:9px 10px; border-radius:6px;
+    background:var(--panel); border:1px solid var(--edge); color:var(--text); font-size:11px;
+    line-height:1.5; z-index:20; box-shadow:0 8px 20px rgba(0,0,0,.4); }
+  .info-copy { color:var(--dim); font-size:11px; line-height:1.55; margin-top:10px; }
+  .experimental-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+  .experiment { border:1px dashed var(--edge); border-radius:7px; padding:12px; }
+  .experiment > label:first-child { color:var(--text); font-weight:500; }
+  .experiment-controls { display:flex; gap:10px; margin-top:10px; }
+  .review-card { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:center; }
+  .review-label { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+  .review-value { margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:17px; font-weight:700; }
+  .authorization { color:var(--blade); font-size:11px; margin-top:8px; line-height:1.5; }
+  .action-stack { display:flex; flex-direction:column; align-items:stretch; gap:8px; min-width:245px; }
+  .secondary-actions { display:flex; align-items:center; justify-content:center; gap:12px; }
+  .text-action { border:0; background:transparent; padding:4px; color:var(--dim); font-weight:500; }
+  .text-action:hover { color:var(--text); }
+  @media (max-width:780px) {
+    .wrap { padding:16px 12px 40px; }
+    h1 { font-size:28px; }
+    .app-header { align-items:center; }
+    .field-grid { grid-template-columns:1fr 1fr; }
+    .field-grid button { width:100%; }
+    .ladder-wrap, .review-card, .experimental-grid { grid-template-columns:1fr; }
+    .action-stack { min-width:0; }
+  }
+  @media (max-width:520px) {
+    .field-grid, .position-grid, .timing-grid { grid-template-columns:1fr; }
+    .step-note { display:none; }
+    .settings-panel > summary { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; }
+    .settings-panel > summary::after { grid-column:2; grid-row:1 / span 2; align-self:center; }
+    .settings-name, .settings-summary { grid-column:1; }
+    .settings-summary { line-height:1.45; }
+    .status-divider { display:none; }
+    .status-strip { align-items:flex-start; flex-direction:column; }
+    .status-dot { display:none; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>SCALPR<span class="slash">/</span>TRADE<span id="modeBadge" class="badge paper">PAPER</span></h1>
-    <div class="tag">Manual execution; automated direction runs shadow-only. The ladder guards authorized trades.</div>
-    <div class="market" id="market">—</div>
-    <div class="tag" id="microRead" style="margin-top:4px">—</div>
-    <label class="tag" style="flex-direction:row;align-items:center;gap:6px;margin-top:6px;cursor:pointer">
-      <input type="checkbox" id="soundToggle" checked onchange="toggleSound()" style="width:auto"> trade sounds (buy / sell)
-    </label>
+    <div class="app-header">
+      <div>
+        <div class="brand-line">
+          <h1>SCALPR<span class="slash">/</span>TRADE</h1>
+          <span id="modeBadge" class="badge paper">PAPER</span>
+        </div>
+        <div class="tag">Manual execution · automated direction remains shadow-only</div>
+      </div>
+      <div class="header-actions">
+        <details class="utility-menu">
+          <summary aria-label="Open interface settings">Settings</summary>
+          <div class="utility-popover">
+            <label class="tag" style="flex-direction:row;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="soundToggle" checked onchange="toggleSound()" style="width:auto">
+              Trade sounds
+            </label>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="status-strip" aria-label="Current market and feed status">
+      <span class="status-dot" aria-hidden="true"></span>
+      <div class="market" id="market">—</div>
+      <span class="status-divider" aria-hidden="true">·</span>
+      <div class="tag" id="microRead">—</div>
+    </div>
   </header>
 
-  <details id="researchDiagnostics" ontoggle="refreshResearchDiagnostics()"
-           style="margin:6px 0;border:1px solid var(--edge);border-radius:6px;padding:7px 10px">
-    <summary class="tag" style="cursor:pointer;color:var(--steel)">Research diagnostics — non-blocking, no approval required</summary>
-    <div id="dataBanner" class="banner red">
-      <span class="lvl">DATA CONFIDENCE: —</span>
-      <span class="rzn">open to refresh the research read</span></div>
-    <div id="tradeBanner" class="banner red">
-      <span class="lvl">TRADE READINESS: NO QUALIFIED POLICY</span>
-      <span class="rzn">Research status only; manual trading remains available.</span></div>
-    <div id="entryRead" class="tag" style="margin:2px 0 6px;padding:6px 10px;border:1px dashed var(--edge);border-radius:6px">—</div>
-    <div id="directionalShadow" class="tag" style="margin:2px 0 2px;padding:8px 10px;border:1px solid var(--edge);border-radius:6px">AUTOMATED DIRECTIONAL SHADOW · open to refresh</div>
-    <div id="evidenceExplanation" class="tag"
-         style="margin:6px 0 2px;padding:10px;border:1px solid var(--edge);border-radius:6px;line-height:1.55">
-      <div style="font-family:'Space Grotesk',sans-serif;color:var(--steel);letter-spacing:.05em">EVIDENCE EXPLANATION · DETERMINISTIC</div>
-      <div id="explanationStatus" style="color:var(--faint);margin:2px 0 7px">Open to refresh. No external AI calls.</div>
-      <div id="explanationRendered"></div>
-      <div style="margin-top:9px;color:var(--steel);font-weight:700">Deterministic brief — source of truth</div>
-      <div id="explanationBrief" style="margin-top:3px;max-height:230px;overflow:auto;padding:7px;background:var(--bg);border-radius:4px"></div>
-    </div>
-  </details>
+  <div class="utility-row">
+    <details id="researchDiagnostics" class="research-drawer" ontoggle="refreshResearchDiagnostics()">
+      <summary class="tag">Research diagnostics — non-blocking, no approval required</summary>
+      <div class="research-body">
+        <div class="research-actions">
+          <button type="button" id="premktBtn" onclick="runPremarket()">Premarket assessment</button>
+        </div>
+        <div id="dataBanner" class="banner red">
+          <span class="lvl">DATA CONFIDENCE: —</span>
+          <span class="rzn">open to refresh the research read</span></div>
+        <div id="tradeBanner" class="banner red">
+          <span class="lvl">TRADE READINESS: NO QUALIFIED POLICY</span>
+          <span class="rzn">Research status only; manual trading remains available.</span></div>
+        <div id="entryRead" class="tag" style="margin:2px 0 6px;padding:6px 10px;border:1px dashed var(--edge);border-radius:6px">—</div>
+        <div id="directionalShadow" class="tag" style="margin:2px 0 2px;padding:8px 10px;border:1px solid var(--edge);border-radius:6px">AUTOMATED DIRECTIONAL SHADOW · open to refresh</div>
+        <div id="evidenceExplanation" class="tag"
+             style="margin:6px 0 2px;padding:10px;border:1px solid var(--edge);border-radius:6px;line-height:1.55">
+          <div style="font-family:'Space Grotesk',sans-serif;color:var(--steel);letter-spacing:.05em">EVIDENCE EXPLANATION · DETERMINISTIC</div>
+          <div id="explanationStatus" style="color:var(--faint);margin:2px 0 7px">Open to refresh. No external AI calls.</div>
+          <div id="explanationRendered"></div>
+          <div style="margin-top:9px;color:var(--steel);font-weight:700">Deterministic brief — source of truth</div>
+          <div id="explanationBrief" style="margin-top:3px;max-height:230px;overflow:auto;padding:7px;background:var(--bg);border-radius:4px"></div>
+        </div>
+        <div id="pmOut" style="margin-top:12px;font-size:12px;line-height:1.6"></div>
+      </div>
+    </details>
+  </div>
   <div id="guardSafety" class="banner red" style="display:none;margin-top:6px">
     <span class="lvl">GUARD SAFETY: —</span><span class="rzn">—</span></div>
 
   <h2>New trade</h2>
-  <div class="panel">
+  <div class="panel trade-shell">
     <form id="tradeForm" onsubmit="return false;">
-      <div class="row">
-        <label>Symbol / OCC contract
-          <input id="symbol" placeholder="Equity option contract (0–60 DTE)" required />
-        </label>
-        <label>Type
-          <select id="type">
-            <option value="option" selected>Manual equity option (0–60 DTE)</option>
-          </select>
-        </label>
-        <label id="allocLabel">Allocation ($)
-          <input id="alloc" type="number" value="1000" min="1" step="any" />
-        </label>
-        <label>Action
-          <select id="buyMode">
-            <option value="buy">Buy at market, then guard</option>
-            <option value="guard">Guard existing position</option>
-          </select>
-        </label>
-      </div>
+      <select id="type" hidden aria-hidden="true">
+        <option value="option" selected>Manual equity option (0–60 DTE)</option>
+      </select>
 
-      <!-- Option contract builder — shown only when Type = Option -->
-      <div id="optBuilder" style="display:none; background:var(--bg); border:1px solid var(--edge);
-           border-radius:6px; padding:12px; margin-bottom:10px">
-        <div class="tag" style="margin-bottom:8px; color:var(--steel)">
-          Option contract builder — pick the pieces, Scalp assembles the symbol</div>
-        <div class="row" style="margin-bottom:8px">
+      <section class="trade-step" aria-labelledby="contractStepTitle">
+        <div class="step-head">
+          <span class="step-number">01</span>
+          <span class="step-title" id="contractStepTitle">Contract</span>
+          <span class="step-note">Build an option or paste an OCC symbol</span>
+        </div>
+        <div id="optBuilder" class="contract-builder" style="display:none">
+          <div class="field-grid">
           <label>Underlying
-            <input id="optUnderlying" placeholder="SPY" style="width:90px"
+            <input id="optUnderlying" placeholder="SPY"
               oninput="this.value=this.value.toUpperCase()" />
           </label>
-          <label>Call / Put
+          <label>Direction
             <select id="optCP">
               <option value="C">Call</option>
               <option value="P">Put</option>
@@ -184,81 +302,151 @@
             <select id="optStrike"><option value="">— pick expiry —</option></select>
           </label>
           <button type="button" id="optLoadBtn" onclick="loadExpirations()"
-            style="align-self:flex-end">Load chain</button>
-        </div>
-        <div id="optQuote" style="display:none; font-size:13px; padding:8px 0 2px">
-          <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:baseline">
-            <span>Bid <b id="qBid" style="color:var(--green)">—</b>
-              <span id="qBidSz" class="tag"></span></span>
-            <span>Ask <b id="qAsk" style="color:var(--blade)">—</b>
-              <span id="qAskSz" class="tag"></span></span>
-            <span>Last <b id="qLast">—</b></span>
-            <span style="margin-left:auto">Est. total cost
-              <b id="qCost" style="color:var(--amber)">—</b></span>
+            style="align-self:end">Load chain</button>
           </div>
-          <div class="tag" id="qSym" style="margin-top:6px"></div>
+          <div id="optQuote" class="quote-strip">
+            <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:baseline">
+              <span>Bid <b id="qBid" style="color:var(--green)">—</b>
+                <span id="qBidSz" class="tag"></span></span>
+              <span>Ask <b id="qAsk" style="color:var(--blade)">—</b>
+                <span id="qAskSz" class="tag"></span></span>
+              <span>Last <b id="qLast">—</b></span>
+              <span style="margin-left:auto">Estimated cost <b id="qCost" style="color:var(--amber)">—</b></span>
+            </div>
+            <div class="tag" id="qSym" style="margin-top:6px"></div>
+          </div>
+          <details class="manual-entry">
+            <summary>Paste an OCC contract instead</summary>
+            <label>OCC contract symbol
+              <input id="symbol" placeholder="SPY260828C00773000" required />
+            </label>
+          </details>
         </div>
-      </div>
-      <div id="manualScopeWarning" class="banner yellow" style="display:none;margin:0 0 10px">
-        <span class="lvl">OUT OF VALIDATED SCOPE</span>
-        <span class="rzn">Ratchet is tuned for SPY 0-2 DTE; behavior unvalidated. This trade is excluded from cohorts and validated metrics.</span>
-      </div>
-      <div class="row">
-        <div>
-          <div class="tag" style="margin-bottom:6px">Ladder — profit-activation &amp; allowed-giveback tiers (once peak reaches AT%, allow only TOL% giveback)</div>
-          <table class="ladder" id="ladder"></table>
-          <button type="button" onclick="addRung()">+ rung</button>
-          <div class="tag" style="margin-top:6px;color:var(--faint);max-width:340px">
-            <b>WHOLE_POSITION_RATCHET.</b> These are giveback tiers, not staged scale-out levels.
-            A valid exit sells <b>100% of the remaining position</b> in one order.
-            Partial profit-taking is not enabled (works the same for 1, 2, or many contracts).</div>
-          <label class="tag" style="display:block;margin-top:10px;max-width:380px">
-            <input id="runnerEnabled" type="checkbox" style="width:auto"> Enable regime-flow runner (PAPER study)
-            <span style="display:block;margin-top:3px">After +20%, it allows up to a 10% giveback only when audited, validation-ready regime and a fresh five-minute Unusual Whales snapshot with three or more captured events whose classified flow is unanimous agree with the contract for two distinct updates. It falls back to this ladder on any gap.</span>
+        <div id="manualScopeWarning" class="banner yellow" style="display:none;margin:12px 0 0">
+          <span class="lvl">OUT OF VALIDATED SCOPE</span>
+          <span class="rzn">Ratchet is tuned for SPY 0-2 DTE; behavior unvalidated. This trade is excluded from cohorts and validated metrics.</span>
+        </div>
+      </section>
+
+      <section class="trade-step" aria-labelledby="positionStepTitle">
+        <div class="step-head">
+          <span class="step-number">02</span>
+          <span class="step-title" id="positionStepTitle">Position</span>
+        </div>
+        <div class="position-grid">
+          <label id="allocLabel">Contracts (qty)
+            <input id="alloc" type="number" value="1" min="1" step="any" />
+          </label>
+          <label>Action
+            <select id="buyMode">
+              <option value="buy">Buy at market, then guard</option>
+              <option value="guard">Guard existing position</option>
+            </select>
           </label>
         </div>
-        <label>Take profit if it goes flat for (seconds)
-          <span class="help" data-tip="If the trade stops making new highs for this many seconds, sell and bank the gain \u2014 catches a winner that stalls out instead of dipping.">?</span>
-          <input id="stallSec" type="number" value="45" min="0" />
-        </label>
-        <label>…but only once profit is above (%)
-          <input id="stallMin" type="number" value="20" min="0" step="any" />
-        </label>
-      </div>
-      <div class="row" style="margin-bottom:10px">
-        <label>Give the trade room for (seconds)
-          <input id="graceSec" type="number" value="60" min="0" />
-        </label>
-        <label>Confirm an exit over (consecutive reads)
-          <input id="confirmTicks" type="number" value="2" min="1" max="10" />
-        </label>
-      </div>
-      <div class="row" style="margin-bottom:10px;border:1px dashed var(--edge);padding:10px;border-radius:6px">
-        <label style="flex-direction:row;align-items:center;gap:8px">
-          <input id="climbEnabled" type="checkbox" style="width:auto">
-          Paper climb adds (Wave gates)
-        </label>
-        <label>Add contracts per climb
-          <input id="climbQty" type="number" value="1" min="1" step="1" />
-        </label>
-        <label>Maximum adds
-          <input id="climbMax" type="number" value="2" min="1" max="5" step="1" />
-        </label>
-        <div class="tag" style="max-width:360px">Default off. SPY options only. Adds only while profitable,
-          ATR/VWAP aligned, synchronized, confirmed, within exposure caps, and never in live mode.</div>
-      </div>
-      <div class="tag" style="margin:8px 0 12px;color:var(--blade)">
-        Clicking <b>ENGAGE SCALPER · AUTO-EXIT</b> authorizes whole-position ratchet/stall exits for this submission.
-      </div>
-      <button class="primary" id="goBtn" onclick="submitTrade()">ENGAGE SCALPER · AUTO-EXIT</button>
-      <button type="button" id="checkBtn" onclick="runPrecheck()" style="margin-left:10px">Run pre-trade check</button>
-      <button type="button" id="skipBtn" onclick="logDiscretionarySkip()" style="margin-left:10px">Log skip · secondary</button>
-      <button type="button" id="premktBtn" onclick="runPremarket()" style="margin-left:10px">Premarket assessment</button>
-      <span id="cpFlash" class="cp-flash"></span>
-      <div class="tag" style="margin-top:7px">Log skip records an explicit operator decision only. It submits no order and is marked operator-driven secondary data.</div>
-      <div id="msg"></div>
-      <div id="pcOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
-      <div id="pmOut" style="margin-top:12px; font-size:12px; line-height:1.6"></div>
+      </section>
+
+      <section class="trade-step" aria-labelledby="exitStepTitle">
+        <div class="step-head">
+          <span class="step-number">03</span>
+          <span class="step-title" id="exitStepTitle">Exit plan</span>
+          <span class="step-note">Server-enforced after engagement</span>
+        </div>
+        <details class="settings-panel" id="exitSettings">
+          <summary>
+            <span class="settings-name">Whole-position ratchet</span>
+            <span class="settings-summary" id="exitSummary">Loading default rules…</span>
+          </summary>
+          <div class="settings-body">
+            <div class="ladder-wrap">
+              <div>
+                <div class="tag" style="margin-bottom:7px">Trailing exit tiers</div>
+                <table class="ladder">
+                  <thead><tr><th>Profit reaches</th><th>Maximum giveback</th><th></th></tr></thead>
+                  <tbody id="ladder"></tbody>
+                </table>
+                <button type="button" onclick="addRung()" style="margin-top:7px">+ Add tier</button>
+                <details class="inline-help">
+                  <summary>i</summary>
+                  <div>These are giveback tiers, not staged scale-outs. A valid exit sells 100% of the remaining position in one order; partial profit-taking is not enabled.</div>
+                </details>
+              </div>
+              <div class="timing-grid">
+                <label>Stall after (seconds)
+                  <input id="stallSec" type="number" value="45" min="0" />
+                </label>
+                <label>Minimum profit for stall (%)
+                  <input id="stallMin" type="number" value="20" min="0" step="any" />
+                </label>
+                <label>Initial grace period (seconds)
+                  <input id="graceSec" type="number" value="60" min="0" />
+                </label>
+                <label>Exit confirmation reads
+                  <input id="confirmTicks" type="number" value="2" min="1" max="10" />
+                </label>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="settings-panel" id="experimentalSettings">
+          <summary>
+            <span class="settings-name">Experimental paper features</span>
+            <span class="settings-summary">Off by default · does not change the frozen study</span>
+          </summary>
+          <div class="settings-body">
+            <div class="experimental-grid">
+              <div class="experiment">
+                <label style="flex-direction:row;align-items:center;gap:8px">
+                  <input id="runnerEnabled" type="checkbox" style="width:auto">
+                  Regime-flow runner
+                </label>
+                <div class="info-copy">After +20%, audited regime and fresh unanimous flow may allow more room. Any data gap falls back to the standard ratchet.</div>
+              </div>
+              <div class="experiment">
+                <label style="flex-direction:row;align-items:center;gap:8px">
+                  <input id="climbEnabled" type="checkbox" style="width:auto">
+                  Paper climb adds (Wave gates)
+                </label>
+                <div class="experiment-controls">
+                  <label>Add quantity
+                    <input id="climbQty" type="number" value="1" min="1" step="1" />
+                  </label>
+                  <label>Maximum adds
+                    <input id="climbMax" type="number" value="2" min="1" max="5" step="1" />
+                  </label>
+                </div>
+                <div class="info-copy">SPY options only; requires profitable, synchronized ATR/VWAP alignment and remains disabled in live mode.</div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="trade-step" aria-labelledby="reviewStepTitle">
+        <div class="step-head">
+          <span class="step-number">04</span>
+          <span class="step-title" id="reviewStepTitle">Review and engage</span>
+        </div>
+        <div class="review-card">
+          <div>
+            <div class="review-label">Submission</div>
+            <div class="review-value" id="tradeReview">Choose a contract to continue</div>
+            <div class="authorization">Clicking <b>ENGAGE SCALPER · AUTO-EXIT</b> authorizes whole-position ratchet and stall exits for this submission.</div>
+          </div>
+          <div class="action-stack">
+            <button class="primary" id="goBtn" onclick="submitTrade()">ENGAGE SCALPER · AUTO-EXIT</button>
+            <button type="button" id="checkBtn" onclick="runPrecheck()">Run pre-trade check</button>
+            <div class="secondary-actions">
+              <button type="button" class="text-action" id="skipBtn" onclick="logDiscretionarySkip()">Log skip · secondary</button>
+            </div>
+          </div>
+        </div>
+        <span id="cpFlash" class="cp-flash"></span>
+        <div class="tag" style="margin-top:10px">Log skip records an operator decision only. It submits no order and remains secondary data.</div>
+        <div id="msg"></div>
+        <div id="pcOut" style="margin-top:12px;font-size:12px;line-height:1.6"></div>
+      </section>
     </form>
   </div>
 
@@ -333,10 +521,51 @@ const defaultLadder = [{at:0,tol:5},{at:10,tol:1},{at:20,tol:0.05}];
 
 function addRung(at='', tol='') {
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td>once up <input type="number" step="any" class="at" value="${at}"></td>
-                  <td>%, sell if it slips <input type="number" step="any" class="tol" value="${tol}"></td>
-                  <td>% <button type="button" onclick="this.closest('tr').remove()">×</button></td>`;
+  tr.innerHTML = `<td><div class="metric-input"><input aria-label="Profit activation percent" type="number" step="any" class="at" value="${at}"><span>%</span></div></td>
+                  <td><div class="metric-input"><input aria-label="Maximum giveback percent" type="number" step="any" class="tol" value="${tol}"><span>%</span></div></td>
+                  <td><button type="button" aria-label="Remove trailing exit tier" onclick="removeRung(this)">×</button></td>`;
   $('ladder').appendChild(tr);
+  updateExitSummary();
+}
+
+function removeRung(button) {
+  button.closest('tr').remove();
+  updateExitSummary();
+}
+
+function updateExitSummary() {
+  const summary = $('exitSummary');
+  if (!summary) return;
+  const tiers = [...document.querySelectorAll('#ladder tr')].map(tr => {
+    const at = tr.querySelector('.at').value;
+    const tol = tr.querySelector('.tol').value;
+    return `${at || '—'}/${tol || '—'}%`;
+  });
+  const tierText = tiers.length ? tiers.join(' · ') : 'No tiers';
+  const stall = $('stallSec')?.value || '0';
+  const grace = $('graceSec')?.value || '0';
+  summary.textContent = `${tierText} · ${stall}s stall · ${grace}s grace`;
+}
+
+function formatContractForReview(symbol) {
+  const match = symbol.match(/^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (!match) return symbol;
+  const [, underlying, year, month, day, cp, strikeRaw] = match;
+  const strike = Number(strikeRaw) / 1000;
+  const expiry = new Date(Number(`20${year}`), Number(month) - 1, Number(day))
+    .toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  return `${underlying} · ${expiry} · $${strike} ${cp === 'C' ? 'Call' : 'Put'}`;
+}
+
+function updateTradeReview() {
+  const symbol = $('symbol').value.trim().toUpperCase();
+  if (!symbol) {
+    $('tradeReview').textContent = 'Choose a contract to continue';
+    return;
+  }
+  const qty = parseFloat($('alloc').value) || 0;
+  const action = $('buyMode').value === 'buy' ? 'Buy and guard' : 'Guard existing position';
+  $('tradeReview').textContent = `${formatContractForReview(symbol)} · ${qty} contract${qty === 1 ? '' : 's'} · ${action}`;
 }
 defaultLadder.forEach(r => addRung(r.at, r.tol));
 
@@ -405,15 +634,26 @@ $('type').addEventListener('change', () => {
   $('graceSec').value = isOpt ? 60 : 30;
   if (isOpt) syncUnderlyingFromSymbol();
   if (isOpt && !$('optUnderlying').value) $('optUnderlying').value = 'SPY';
+  updateExitSummary();
+  updateTradeReview();
 });
 $('type').dispatchEvent(new Event('change'));
 
-$('symbol').addEventListener('input', () => { lastPrecheckSnapshot = null; syncUnderlyingFromSymbol(); });
+$('symbol').addEventListener('input', () => {
+  lastPrecheckSnapshot = null;
+  syncUnderlyingFromSymbol();
+  updateTradeReview();
+});
 $('symbol').addEventListener('input', updateManualScopeWarning);
 $('optUnderlying').addEventListener('input', updateManualScopeWarning);
+$('buyMode').addEventListener('change', updateTradeReview);
+$('ladder').addEventListener('input', updateExitSummary);
+for (const id of ['stallSec', 'stallMin', 'graceSec', 'confirmTicks']) {
+  $(id).addEventListener('input', updateExitSummary);
+}
 
 // recompute est. cost when qty changes
-$('alloc').addEventListener('input', updateCost);
+$('alloc').addEventListener('input', () => { updateCost(); updateTradeReview(); });
 
 async function loadExpirations() {
   const u = $('optUnderlying').value.trim();
@@ -473,6 +713,7 @@ function pickContract() {
   const sym = $('optStrike').value;
   if (!sym) return;
   $('symbol').value = sym;             // feed the assembled symbol into the real field
+  updateTradeReview();
   updateManualScopeWarning();
   $('qSym').textContent = 'Contract: ' + sym;
   $('optQuote').style.display = 'block';

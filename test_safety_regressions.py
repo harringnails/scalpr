@@ -595,6 +595,24 @@ def test_dashboard_exposes_safety_and_one_click_controls():
     assert "Contracts can still be reviewed below" in html
 
 
+def test_dashboard_uses_progressive_disclosure_without_changing_trade_controls():
+    html = ss.DASHBOARD.read_text()
+    assert html.count('class="trade-step"') == 4
+    assert 'id="exitSettings"' in html
+    assert 'id="experimentalSettings"' in html
+    assert 'id="tradeReview"' in html
+    assert 'id="type" hidden' in html
+    assert '<details class="manual-entry">' in html
+    assert '<details class="settings-panel" id="exitSettings">' in html
+    assert '<details class="settings-panel" id="experimentalSettings">' in html
+    for element_id in (
+        "symbol", "alloc", "buyMode", "ladder", "stallSec", "stallMin",
+        "graceSec", "confirmTicks", "runnerEnabled", "climbEnabled",
+        "climbQty", "climbMax", "goBtn", "checkBtn", "skipBtn",
+    ):
+        assert f'id="{element_id}"' in html
+
+
 def test_all_dashboard_trade_actions_are_one_click_without_approval_popups():
     html = ss.DASHBOARD.read_text()
     assert "Sell 100% of ${sym} at market right now?" not in html
