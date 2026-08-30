@@ -26,8 +26,8 @@
     <key>ProcessType</key>
     <string>Background</string>
     <key>StandardOutPath</key>
-    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/a2_relabel_launchd.out.log</string>
+    <string>/Users/natalieharrington/Library/Logs/scalpr/a2_relabel.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/a2_relabel_launchd.err.log</string>
+    <string>/Users/natalieharrington/Library/Logs/scalpr/a2_relabel.err.log</string>
 </dict>
 </plist>
