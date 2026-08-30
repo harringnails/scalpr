@@ -588,7 +588,8 @@ def test_dashboard_exposes_safety_and_one_click_controls():
     assert "addToGuard" in html
     assert "UNPROTECTED" in html
     assert 'id="autoExitAck"' not in html
-    assert "ENGAGE SCALPER · AUTO-EXIT" in html
+    assert 'id="goBtn" onclick="submitTrade()">ENGAGE SCALPER</button>' in html
+    assert "Auto-exit authorized: the entire remaining position may be sold" in html
     assert "allow_automatic_sell" in html
     assert 'id="waveStartBtn"' in html
     assert "ALPACA_INDEX_VALUES_GRANT_MISSING" in html
@@ -598,6 +599,7 @@ def test_dashboard_exposes_safety_and_one_click_controls():
 def test_dashboard_uses_progressive_disclosure_without_changing_trade_controls():
     html = ss.DASHBOARD.read_text()
     assert html.count('class="trade-step"') == 4
+    assert 'class="trade-step experimental-step"' in html
     assert 'id="exitSettings"' in html
     assert 'id="experimentalSettings"' in html
     assert 'id="tradeReview"' in html
