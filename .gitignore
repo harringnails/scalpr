@@ -75,6 +75,9 @@ outputs/
 # all jsonl are append-only evidence data, never code
 *.jsonl
 flashalpha_shadow_v0.jsonl
+flashalpha_pin_study_v0.jsonl
+flashalpha_pin_report_v0.json
+flashalpha_pin_chart_v0.png
 
 # csv data / logs / journals (evidence, not code)
 *.csv
