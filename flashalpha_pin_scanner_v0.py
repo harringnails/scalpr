@@ -358,7 +358,10 @@ def build_candidate(
             missing.append(name)
 
     grade_reasons = []
-    if regime == "negative":
+    if time_to_close is not None and time_to_close <= 0:
+        grade = "UNKNOWN"
+        grade_reasons.append("POST_CLOSE_OR_INVALID_TIME")
+    elif regime == "negative":
         grade = "ANTI_PIN_NEGATIVE_GAMMA"
         grade_reasons.append("NEGATIVE_GAMMA_BREAKOUT_GATE")
     elif freshness["status"] != "FRESH":
@@ -370,9 +373,9 @@ def build_candidate(
     elif missing:
         grade = "UNKNOWN"
         grade_reasons.append("REQUIRED_EVIDENCE_MISSING")
-    elif time_to_close is None or time_to_close <= 0:
+    elif time_to_close is None:
         grade = "UNKNOWN"
-        grade_reasons.append("POST_CLOSE_OR_INVALID_TIME")
+        grade_reasons.append("TIME_TO_CLOSE_MISSING")
     elif pin_score is None or pin_score < 0 or pin_score > 100:
         grade = "UNKNOWN"
         grade_reasons.append("PIN_SCORE_OUT_OF_RANGE")

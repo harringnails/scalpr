@@ -134,6 +134,14 @@ def test_negative_gamma_is_anti_pin_even_when_another_endpoint_is_restricted():
     assert candidate["grade_reasons"] == ["NEGATIVE_GAMMA_BREAKOUT_GATE"]
 
 
+def test_post_close_negative_gamma_is_outcome_input_not_anti_pin_candidate():
+    candidate = scanner.build_candidate(
+        raw_set(regime="negative_gamma", hours=0.0), observed_at=OBSERVED,
+    )
+    assert candidate["grade"] == "UNKNOWN"
+    assert candidate["grade_reasons"] == ["POST_CLOSE_OR_INVALID_TIME"]
+
+
 @pytest.mark.parametrize(
     ("score", "hours", "expected"),
     [
