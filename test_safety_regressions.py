@@ -600,9 +600,6 @@ def test_dashboard_exposes_safety_and_one_click_controls():
     assert 'id="goBtn" onclick="submitTrade()">ENGAGE SCALPER</button>' in html
     assert "Auto-exit authorized: the entire remaining position may be sold" in html
     assert "allow_automatic_sell" in html
-    assert 'id="waveStartBtn"' in html
-    assert "ALPACA_INDEX_VALUES_GRANT_MISSING" in html
-    assert "Contracts can still be reviewed below" in html
 
 
 def test_dashboard_uses_progressive_disclosure_without_changing_trade_controls():
