@@ -1678,36 +1678,5 @@ scheduleRefresh(refreshDirectionalShadow, 15000);
 scheduleRefresh(refreshExplanation, 15000);
 scheduleRefresh(refreshExploSummary, 60000);
 </script>
-<!-- Options-Flow Evidence ranking (read-only, evidence-only, no probability). -->
-<div id="flowPanel" style="display:none;margin-top:16px;padding:12px;border:1px solid #444;border-radius:8px">
-  <div style="font-weight:600">OPTIONS-FLOW EVIDENCE
-    <span style="opacity:.6;font-size:.8em">🟢 aligned + fresh · 🟠 mixed/partial · evidence only, NOT a buy signal</span></div>
-  <div id="flowBody" style="font-size:.85em;opacity:.9;margin-top:6px"></div>
-</div>
-<script>
-async function refreshFlow(){
-  try{
-    const d = await (await fetch('/api/flow/ranking')).json();
-    const panel = document.getElementById('flowPanel');
-    if(!d || !d.ranking || !d.ranking.length){ panel.style.display='none'; return; }
-    panel.style.display='block';
-    let h = '<table style="font-size:.9em"><tr><th></th><th>ticker</th><th>tier</th>'+
-            '<th>direction</th><th>agree</th><th>contracts</th><th>fresh</th></tr>';
-    for(const s of d.ranking){
-      const dirColor = s.direction==='BULLISH'?'#6c6':(s.direction==='BEARISH'?'#e66':'#bbb');
-      h += `<tr><td style="font-size:1.1em">${s.star||'·'}</td>`+
-           `<td><b>${s.ticker}</b></td><td>${s.tier}</td>`+
-           `<td style="color:${dirColor}">${s.direction}</td>`+
-           `<td>${s.agreeing_signals}</td><td>${s.band_contracts}</td>`+
-           `<td>${s.fresh?'yes':'<span style="opacity:.5">stale</span>'}</td></tr>`;
-    }
-    h += '</table><div style="opacity:.55;margin-top:4px">'+
-         'Options flow only (equity order flow / internals / news not on feed). '+
-         'GREEN DATA ≠ GREEN TRADE. Pull a fresh workup for a ticker to update it.</div>';
-    document.getElementById('flowBody').innerHTML = h;
-  }catch(e){ /* optional; stay silent */ }
-}
-refreshFlow(); scheduleRefresh(refreshFlow, 30000);
-</script>
 </body>
 </html>
