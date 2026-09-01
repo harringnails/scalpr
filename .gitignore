@@ -74,6 +74,7 @@ outputs/
 
 # all jsonl are append-only evidence data, never code
 *.jsonl
+scalpr_status.html
 
 # csv data / logs / journals (evidence, not code)
 *.csv
