@@ -1,0 +1,86 @@
+{
+  "authority": {
+    "admission_authority": false,
+    "execution_authority": false,
+    "is_inferential": false,
+    "is_qualifying": false,
+    "study_status": "EXPLORATORY - NON-INFERENTIAL"
+  },
+  "close": {
+    "bar_timestamp_et": "15:59:00",
+    "field": "close",
+    "missing_policy": "UNAVAILABLE",
+    "source": "Alpaca SIP SPY one-minute bar"
+  },
+  "construction": {
+    "contract_multiplier": 100,
+    "expiry": "same-session 0DTE",
+    "long_call": "exactly 2.00 points above selected short call",
+    "long_put": "exactly 2.00 points below selected short put",
+    "quantity": 1,
+    "short_call": "listed 0DTE strike nearest the data-derived call wall; lower strike wins ties",
+    "short_put": "listed 0DTE strike nearest the data-derived put wall; higher strike wins ties",
+    "wing_width_points": 2.0
+  },
+  "control": {
+    "classification": "HIGH_PIN_PRESSURE at fixed entry is treatment; every other priceable grade is non-HIGH control",
+    "matching": "same symbol, 0DTE expiry, fixed clock window, construction, quote rules, costs, and settlement",
+    "primary_comparison": "mean net P&L on HIGH days minus mean net P&L on non-HIGH days"
+  },
+  "entry": {
+    "candidate_source": "flashalpha_pin_study_v0.jsonl",
+    "clock_et": "14:00:00",
+    "eligible_window_end_et": "14:05:59",
+    "eligible_window_start_et": "14:00:00",
+    "rule": "first scanner observation in the eligible fixed-clock window",
+    "selection_uses_future_data": false
+  },
+  "management": {
+    "early_exit": false,
+    "intraday_adjustment": false,
+    "stop_loss": false,
+    "terminal_rule": "hold all four legs to 0DTE expiry"
+  },
+  "missingness": {
+    "fabrication_allowed": false,
+    "required": "candidate walls, four exact listed contracts, clean fresh quotes, positive net credit after slippage, and Alpaca SIP close",
+    "result": "UNAVAILABLE"
+  },
+  "pricing": {
+    "commission_dollars_per_leg": 0.65,
+    "entry_credit": "short call mid + short put mid - long call mid - long put mid",
+    "entry_slippage_dollars_per_leg": 0.05,
+    "maximum_quote_age_seconds": 60,
+    "minimum_quote": "bid > 0 and ask >= bid",
+    "option_source": "FlashAlpha live /v1/optionquote/SPY filtered to same-session expiry",
+    "total_commission_dollars": 2.6,
+    "total_entry_credit_haircut_points": 0.2
+  },
+  "report": {
+    "left_tail": [
+      "worst_sessions",
+      "minimum_net_pnl",
+      "p05_net_pnl",
+      "p10_net_pnl",
+      "bottom_decile_mean_net_pnl",
+      "loss_rate"
+    ],
+    "matched_null": "one-sided contiguous five-session-block sign-flip test of HIGH-day P&L minus the non-HIGH mean, with finite-sample plus-one correction",
+    "primary_metric": "HIGH mean net P&L minus non-HIGH mean net P&L",
+    "summary": [
+      "available days",
+      "mean net P&L",
+      "median net P&L",
+      "win rate",
+      "net expectancy after costs"
+    ],
+    "validation_target_available_days": 60
+  },
+  "schema_version": "flashalpha-pin-ic-prereg-v0",
+  "settlement": {
+    "call_intrinsic_points": "max(SPY close - short call, 0) - max(SPY close - long call, 0)",
+    "commission_application": "subtract four entry-leg commissions once; no modeled exit commission",
+    "net_pnl_dollars": "(slippage-adjusted credit points - put intrinsic points - call intrinsic points) * 100 - commissions",
+    "put_intrinsic_points": "max(short put - SPY close, 0) - max(long put - SPY close, 0)"
+  }
+}

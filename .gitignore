@@ -78,6 +78,9 @@ flashalpha_shadow_v0.jsonl
 flashalpha_pin_study_v0.jsonl
 flashalpha_pin_report_v0.json
 flashalpha_pin_chart_v0.png
+flashalpha_pin_ic_quotes_v0.jsonl
+flashalpha_pin_ic_study_v0.jsonl
+flashalpha_pin_ic_report_v0.json
 
 # csv data / logs / journals (evidence, not code)
 *.csv
