@@ -12,7 +12,13 @@ The machine-readable frozen specification is
 new output paths, and a new cohort; v0 records must never be rewritten.
 
 Frozen SHA-256:
-`10f784b3ecd8ffb8eea0f594c67c8ac88d1aa418ae70e316bc1d6a090609edc7`.
+`5a66278075eb1eeacafbafcb59c7971b7ea882c6b79edf5746a36f76550c19a8`.
+
+Before any real provider or study outcome was read, the source route was
+corrected from `/v1/optionquote/SPY` to FlashAlpha's documented live route,
+`/optionquote/SPY`. Commit `ccc822d` retains the pre-correction artifact for the
+audit trail. No construction, entry, cost, settlement, control, or report rule
+changed.
 
 ## Fixed Design
 

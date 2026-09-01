@@ -103,3 +103,6 @@ Declared Basic runs request only `gex` and `levels`; declared Free runs make no
 SPY HTTP calls. Unavailable endpoints receive local `TIER_SKIPPED` records.
 `--budget` can reduce the default maximum of three HTTP requests per poll;
 budget-suppressed endpoints receive `CALL_BUDGET_SKIPPED` records.
+
+The separately frozen iron-condor paper simulation and its replacement operator
+poll command are documented in `FLASHALPHA_PIN_IC_STUDY_V0.md`.

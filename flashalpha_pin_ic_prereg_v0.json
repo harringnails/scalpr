@@ -52,7 +52,7 @@
     "entry_slippage_dollars_per_leg": 0.05,
     "maximum_quote_age_seconds": 60,
     "minimum_quote": "bid > 0 and ask >= bid",
-    "option_source": "FlashAlpha live /v1/optionquote/SPY filtered to same-session expiry",
+    "option_source": "FlashAlpha live /optionquote/SPY filtered to same-session expiry",
     "total_commission_dollars": 2.6,
     "total_entry_credit_haircut_points": 0.2
   },
