@@ -74,7 +74,7 @@ export ENTRY_INTEL_BID_CAPTURE_ENABLED=1
 # No OpenAI/Claude credential is loaded or required by this server lifecycle.
 export EXPLAIN_LAYER_ENABLED=0
 
-echo "Starting Scalpr server with Alpaca SIP in the background…"
+echo "Starting Scalpr server with Alpaca SIP under a macOS sleep assertion…"
 echo "Wave Riding shadow observer: ON (Cohort A)"
 echo "Entry Incubation shadow observer: ON (Cohort A)"
 echo "Unusual Whales shadow capture: OFF (subscription canceled)"
@@ -111,11 +111,10 @@ if [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
-# The study collector must not depend on an interactive Terminal remaining open.
-# It is intentionally launched by Terminal, which has the macOS privacy grant
-# for the protected Documents folder. The inherited Keychain-only credentials
-# remain in this process tree and are never written to disk.
-/usr/bin/nohup "$PYTHON_BIN" scalp_server.py --sip \
+# The manually initiated server remains flat-gated above. caffeinate holds idle
+# and system-sleep assertions only while this exact server process is alive; it
+# is not a daemon and does not restart the server.
+/usr/bin/nohup /usr/bin/caffeinate -is "$PYTHON_BIN" scalp_server.py --sip \
   >>"$SERVER_LOG" 2>>"$SERVER_ERROR_LOG" < /dev/null &
 SERVER_PID=$!
 echo "Scalpr server launch requested (pid $SERVER_PID)."

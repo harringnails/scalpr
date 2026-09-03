@@ -13,7 +13,13 @@ Legacy is a local paper service. Do not start it with `--live`. Do not copy or i
 
 ## Start legacy manually
 
-From `Scalpr7/`, run `bash restart.sh`. It enables both shadow observers and can encounter Alpaca 429 limits. Keep the process visible and review any broker error immediately.
+From `Scalpr7/`, run `bash restart.sh` while the market is closed and the PAPER
+account is flat. The operator-run script launches the server as
+`caffeinate -is .venv/bin/python scalp_server.py --sip`, preventing idle and
+system sleep only while that server process remains alive. It is not an
+auto-restart daemon; after any process exit, the normal off-session flat-account
+restart gate still applies. The script enables both shadow observers and can
+encounter Alpaca 429 limits. Review any broker error immediately.
 
 ## Unusual Whales Workup credential
 

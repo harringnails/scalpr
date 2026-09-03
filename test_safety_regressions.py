@@ -452,6 +452,8 @@ def test_restart_requires_direct_flat_account_and_open_order_proof():
     assert 'proof.get("positions_count") == 0' in source
     assert 'proof.get("open_orders_count") == 0' in source
     assert 'proof.get("mode") == "paper"' in source
+    assert '/usr/bin/caffeinate -is "$PYTHON_BIN" scalp_server.py --sip' in source
+    assert "KeepAlive" not in source
 
 
 def test_cancelled_provider_subscriptions_stay_disabled_in_restart_paths():

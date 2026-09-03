@@ -14,7 +14,8 @@ Read, per poll:
 
 Decision logic:
 - **During RTH** (`state == ACTIVE_RTH_CAPTURE` or `market_window == true`): if **no decision-file write in the last 5 minutes** → `ALERT: collector not producing during RTH`. (Normal RTH cadence is ~1 write/minute, so 5 min stale is unambiguous.)
-- **Market closed** (`ARMED_MARKET_CLOSED`): decision files are *expected* to be idle — do **not** alert on that. Instead check process liveness: if the **collector status `updated_at` is > 5 minutes stale** → `ALERT: collector heartbeat stale` (the process may be dead).
+- **Market closed** (`ARMED_MARKET_CLOSED`): decision files are *expected* to be idle. A collector status `updated_at` older than 5 minutes is still logged as `ALERT: collector heartbeat stale`, but it is notification-suppressed outside the operational window.
+- **Pre-open / RTH**: from 30 minutes before the regular 09:30 ET open through 16:00 ET on weekdays, stale `ARMED_MARKET_CLOSED` status notifies. This ensures an overnight log-only incident escalates before it can threaten session capture. The status-driven RTH no-production alert remains unchanged.
 - If the status file is missing/unparseable for > 5 min → `ALERT: collector status unreadable`.
 
 A-priori thresholds (conservative, not tuned): `RTH_STALE = 5 min`, `HEARTBEAT_STALE = 5 min`, poll every `60s`. These are round operational values, changeable by the operator.
@@ -23,7 +24,7 @@ A-priori thresholds (conservative, not tuned): `RTH_STALE = 5 min`, `HEARTBEAT_S
 
 On any ALERT:
 1. Append a line to a dedicated `collector_alerts_v0.log` (timestamp, alert type, the stale age).
-2. Fire a macOS notification: `osascript -e 'display notification "…" with title "Scalpr collector ALERT" sound name "Basso"'`.
+2. Fire a macOS notification unless this is benign off-hours `ARMED_MARKET_CLOSED` heartbeat staleness. That case remains log-only; if it persists into pre-open, it notifies immediately.
 3. Optional: also print to stdout so it's visible if run in a terminal.
 
 De-dupe: don't re-notify every 60s for the same ongoing condition — notify on transition to ALERT, then at most once every ~15 min while it persists; notify once on recovery (`RECOVERED`).
@@ -46,7 +47,8 @@ Package as a small standalone Python script (`collector_liveness_alert.py`) with
 - RTH + recent write → no alert.
 - RTH + no write for > 5 min → ALERT (collector dark) — this is the Aug-21/Aug-24 failure it must catch.
 - Market closed + idle decision files but fresh status heartbeat → no alert.
-- Market closed + status heartbeat > 5 min stale → ALERT (process dead).
+- Market closed + status heartbeat > 5 min stale → logged ALERT, no notification.
+- Pre-open + status heartbeat > 5 min stale → logged ALERT and notification.
 - Missing/unparseable status file → ALERT.
 - De-dupe: one notification on transition, not one per poll; one RECOVERED notification.
 
