@@ -97,3 +97,11 @@ def test_capture_writes_only_requested_ledger(tmp_path):
     assert output.exists()
     assert len(list(tmp_path.rglob("*.*"))) == 1
     assert json.loads(output.read_text())["record_hash"] == record["record_hash"]
+
+
+def test_rth_and_until_close_boundaries():
+    assert context.in_rth(datetime(2026, 9, 3, 13, 29, tzinfo=timezone.utc)) is False
+    assert context.in_rth(datetime(2026, 9, 3, 13, 30, tzinfo=timezone.utc)) is True
+    assert context.in_rth(datetime(2026, 9, 3, 20, 0, tzinfo=timezone.utc)) is False
+    assert context.seconds_until_close(datetime(2026, 9, 3, 19, 59, tzinfo=timezone.utc)) == 60
+    assert context.seconds_until_close(datetime(2026, 9, 3, 20, 1, tzinfo=timezone.utc)) == 0

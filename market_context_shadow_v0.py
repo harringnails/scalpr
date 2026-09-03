@@ -335,6 +335,12 @@ def in_rth(now: datetime) -> bool:
     return local.weekday() < 5 and clock_time(9, 30) <= local.time() < clock_time(16, 0)
 
 
+def seconds_until_close(now: datetime) -> float:
+    local = now.astimezone(ET)
+    close = datetime.combine(local.date(), clock_time(16, 0), ET)
+    return max(0.0, (close - local).total_seconds())
+
+
 def append_record(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -352,21 +358,29 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     capture = sub.add_parser("capture", help="capture forward-only RTH observations")
-    capture.add_argument("--polls", type=int, default=1)
+    duration = capture.add_mutually_exclusive_group()
+    duration.add_argument("--polls", type=int)
+    duration.add_argument(
+        "--until-close", action="store_true",
+        help="start during RTH and stop cleanly before the 16:00 ET close",
+    )
     capture.add_argument("--interval-seconds", type=float, default=60.0)
     capture.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     capture.add_argument("--flashalpha-ledger", type=Path)
     args = parser.parse_args()
     if not 30.0 <= args.interval_seconds <= 60.0:
         raise SystemExit("--interval-seconds must be between 30 and 60")
-    if args.polls < 1:
+    polls = args.polls if args.polls is not None else 1
+    if polls < 1:
         raise SystemExit("--polls must be positive")
     source = AlpacaSipSource()
     written = 0
-    for index in range(args.polls):
+    while args.until_close or written < polls:
         now = datetime.now(timezone.utc)
         if not in_rth(now):
-            raise SystemExit("context capture is RTH-only (09:30-16:00 America/New_York)")
+            if args.until_close and written:
+                break
+            raise SystemExit("context capture must start during RTH (09:30-16:00 America/New_York)")
         record = capture_once(
             source, output=args.output, flashalpha_ledger=args.flashalpha_ledger, now=now,
         )
@@ -377,8 +391,14 @@ def main() -> int:
             "observed_at_utc": record["observed_at_utc"],
             "record_hash": record["record_hash"],
         }), flush=True)
-        if index + 1 < args.polls:
-            time.sleep(args.interval_seconds)
+        if not args.until_close and written >= polls:
+            break
+        sleep_seconds = args.interval_seconds
+        if args.until_close:
+            sleep_seconds = min(sleep_seconds, seconds_until_close(datetime.now(timezone.utc)))
+            if sleep_seconds <= 0:
+                break
+        time.sleep(sleep_seconds)
     print(_canonical({"output": str(args.output), "records_written": written, "study_status": STUDY_STATUS}))
     return 0
 
