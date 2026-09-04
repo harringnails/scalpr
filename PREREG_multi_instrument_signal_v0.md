@@ -1,8 +1,8 @@
 # Pre-Registration - Multi-Instrument Signal Study (v0)
 
-**Study ID:** `multi_instrument_signal_v0` (D1 flip-reclaim; D2 intraday-continuation)  
-**Status:** **FROZEN / operator-approved 2026-09-04.** Paper/shadow and `UNDERPOWERED` until the frozen verdict requirements are met. It has no admission, Guard, order, or execution authority.  
-**Prospective accrual:** begins with the next full RTH session after the freeze commit. Every session on or before 2026-09-04 is in-sample and excluded.  
+**Study ID:** `multi_instrument_signal_v0` (D1 flip-reclaim; D2 intraday-continuation)
+**Status:** **FROZEN / operator-approved 2026-09-04.** Paper/shadow and `UNDERPOWERED` until the frozen verdict requirements are met. It has no admission, Guard, order, or execution authority.
+**Prospective accrual:** begins with the next full RTH session after the freeze commit. Every session on or before 2026-09-04 is in-sample and excluded.
 **Mutation rule:** any parameter, instrument, marker, outcome, null, or verdict change requires a new study ID and resets N to zero. Every record carries this file's SHA-256.
 
 ## Frozen Instrument Set

@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import subprocess
 import time
 import uuid
@@ -487,11 +488,21 @@ def annotate_matching(row: dict[str, Any], quotes: list[dict[str, Any]], session
 
 def permutation_p(effects: list[float]) -> float | None:
     if not effects: return None
-    observed = mean(effects); n = min(1 << len(effects), 10000); exceed = 0
-    for mask in range(n):
-        trial = mean(value if mask & (1 << (i % 20)) else -value for i, value in enumerate(effects))
-        exceed += trial >= observed
-    return (exceed + 1) / (n + 1)
+    observed = mean(effects)
+    if len(effects) <= 13:
+        permutations = 1 << len(effects)
+        exceed = sum(
+            mean(value if mask & (1 << i) else -value for i, value in enumerate(effects)) >= observed
+            for mask in range(permutations)
+        )
+    else:
+        permutations = 9999
+        rng = random.Random(canonical_hash(effects))
+        exceed = sum(
+            mean(value if rng.getrandbits(1) else -value for value in effects) >= observed
+            for _ in range(permutations)
+        )
+    return (exceed + 1) / (permutations + 1)
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -516,7 +527,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             folds.append(mean(values) if values else None)
         same = sum(bool(values) and mean(values) > 0 for values in per.values())
         p = permutation_p(effects); n = len(selected)
-        verdict = "UNDERPOWERED" if n < TARGET_N else "EDGE" if effects and mean(effects) > 0 and p is not None and p <= .01 and sum(x is not None and x > 0 for x in folds) >= 3 else "NO EDGE"
+        verdict = "UNDERPOWERED" if n < TARGET_N or len(effects) < TARGET_N else "EDGE" if mean(effects) > 0 and p is not None and p <= .01 and sum(x is not None and x > 0 for x in folds) >= 3 else "NO EDGE"
         report["groups"][f"{arm}:{cohort}"] = {"n": n, "matched_n": len(effects), "mean_matched_effect_60m": mean(effects) if effects else None,
             "null_p": p, "fold_means": folds, "per_instrument": {s: {"n": len(v), "mean": mean(v) if v else None} for s, v in per.items()},
             "replication": "REPLICATED" if same >= 3 else "NOT_REPLICATED", "verdict": verdict}

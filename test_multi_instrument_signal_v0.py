@@ -145,6 +145,13 @@ def test_matched_null_is_instrument_stratified_and_reported():
     assert report["verdict"] == "UNDERPOWERED"
 
 
+def test_large_sample_permutation_is_deterministic_and_uses_all_effects():
+    effects = [0.001 + index / 1_000_000 for index in range(30)]
+    assert study.permutation_p(effects) == study.permutation_p(effects)
+    changed = effects.copy(); changed[25] = -1
+    assert study.permutation_p(effects) != study.permutation_p(changed)
+
+
 def test_frozen_prereg_exact_and_isolation():
     text = Path("PREREG_multi_instrument_signal_v0.md").read_text()
     for token in ("2.5 bps", "3.0 bps", "180 seconds", "900 seconds", "120 seconds", "2 minutes", "N = 150", "p <= 0.01", "3/4"):
