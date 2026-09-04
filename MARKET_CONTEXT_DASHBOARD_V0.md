@@ -13,7 +13,22 @@ cd "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7"
 
 Keep the existing operator-started `scalp_server.py` process unchanged. No restart is required when `dashboard.html` changes; refresh `http://127.0.0.1:8420/` in the browser.
 
-The panel polls `http://127.0.0.1:8421/latest` every 30 seconds. A missing or empty ledger has zero observations and renders the calm `CONTEXT CAPTURE NOT RUNNING` state. After at least one observation exists, a latest record older than 120 seconds or stamped `STALE` renders `STALE — DO NOT INTERPRET` with blank readings. The composite and weights remain unscored until their parameters are frozen.
+The panel polls `http://127.0.0.1:8421/latest` every 30 seconds. A missing or empty ledger has zero observations and renders the calm `CONTEXT CAPTURE NOT RUNNING` state. After at least one observation exists, a latest record older than 120 seconds or stamped `STALE` renders `STALE — DO NOT INTERPRET` with blank readings.
+
+## Provisional Context Index
+
+The Context Index is a deterministic display heuristic for present conditions. It is labeled exactly `exploratory composite · not a probability · not a signal · present conditions, not a forecast.` It has no effect on execution, admission, pre-check, Guard, or either frozen signal study.
+
+Each available group is mapped to a signed lean in `[-1,+1]`. The weighted lean is rescaled as `score = round(50 + 50 * weighted_lean)` and bounded to `0–100`.
+
+| Group | Weight | Signed lean |
+| --- | ---: | --- |
+| Price structure | 0.40 | Mean of VWAP sign (`above=+1`, `below=-1`) and 30-minute opening-range state (`above=+1`, `inside=0`, `below=-1`). |
+| Participation | 0.30 | `clamp((large-cap advancing share - 0.50) / 0.50, -1, +1)`. |
+| Cross-asset | 0.25 | Mean sign of QQQ return, IWM return, and the available fixed sector-ETF return signs. |
+| Options structure | 0.05 | Directional lean is always `0`. Gamma is displayed only as a direction-agnostic modifier: negative gamma means breakout risk either way; positive gamma means dampening risk either way. |
+
+The provisional weights sum to `1.00`. Options structure cannot move the directional score on its own. The bridge scores only a `CLEAN` or `DEGRADED` record for which all four groups and every required component are available and fresh enough for the source ledger. Any missing group, `STALE` record, or not-started ledger renders `— / NOT SCORED`. The observed-direction label remains descriptive only.
 
 ## Health audio
 

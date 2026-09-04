@@ -26,6 +26,7 @@ def test_latest_valid_observation_is_returned_without_modifying_ledger(tmp_path)
     assert payload["ledger_status"] == "AVAILABLE"
     assert payload["record"] == latest
     assert payload["record_count"] == 2
+    assert payload["context_index"]["status"] == "NOT_SCORED"
     assert payload["execution_authority"] is False
     assert (ledger.read_bytes(), ledger.stat().st_mtime_ns) == before
 

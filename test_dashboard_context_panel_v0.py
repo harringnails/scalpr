@@ -59,6 +59,21 @@ def test_context_panel_only_has_health_toggle_and_defaults_to_calm_not_started()
     assert "execution_authority" not in panel
 
 
+def test_context_index_is_provisional_labeled_and_uses_bridge_result():
+    html = DASHBOARD.read_text()
+    panel = re.search(r'<section id="scalprContext".*?</section>', html, re.S).group()
+    render = function_source(html, "renderContextRecord")
+    refresh = function_source(html, "refreshContextPanel")
+    assert "exploratory composite · not a probability · not a signal · present conditions, not a forecast." in panel
+    assert "Price structure 40%" in panel
+    assert "Participation 30%" in panel
+    assert "Cross-asset 25%" in panel
+    assert "Options modifier 5%" in panel
+    assert "payload.context_index" in refresh
+    assert "contextIndex.status === 'SCORED'" in render
+    assert "not scored" in render
+
+
 def test_stale_and_missing_context_are_blanked_instead_of_rendered_live():
     html = DASHBOARD.read_text()
     unavailable = function_source(html, "renderContextUnavailable")
@@ -110,3 +125,19 @@ def test_context_is_absent_from_trade_and_precheck_paths():
     assert "context" not in protected.lower()
     assert "8421" not in protected
     assert "CONTEXT_SOURCE_URL" not in Path(ROOT / "scalp_server.py").read_text()
+
+
+def test_precheck_adds_read_only_option_scenarios_without_mutating_snapshot():
+    html = DASHBOARD.read_text()
+    precheck = function_source(html, "runPrecheck")
+    loader = function_source(html, "loadOptionScenario")
+    renderer = function_source(html, "renderOptionScenario")
+    assert "lastPrecheckSnapshot={symbol:s.toUpperCase(),type:$('type').value,value:p};" in precheck
+    assert "await loadOptionScenario(s,esc)" in precheck
+    assert "OPTION_SCENARIO_SOURCE_URL" in loader
+    assert "fetch(" in loader
+    assert "submit" not in loader.lower()
+    assert "OPTION_SCENARIO_LABEL" in renderer
+    assert "mechanical scenarios given an assumed move" in html
+    assert "unavailable" in renderer.lower()
+    assert "/api/order" not in loader + renderer

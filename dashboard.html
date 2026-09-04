@@ -307,12 +307,22 @@
   .context-observed { color:var(--steel); font-weight:700; font-size:13px; letter-spacing:.04em; }
   .context-disclaimer { color:var(--dim); font-size:10px; line-height:1.55; margin-top:8px; }
   .weight-ring { width:92px; height:92px; border-radius:50%; margin:2px auto 13px;
-    background:conic-gradient(#31404b 0 100%); position:relative; }
+    background:conic-gradient(#4bd38a 0 40%, #55a8d8 40% 70%, #e2aa4f 70% 95%, #72808d 95% 100%); position:relative; }
   .weight-ring::after { content:'PROVISIONAL'; position:absolute; inset:12px; border-radius:50%;
     display:grid; place-items:center; text-align:center; background:#0c141b; color:var(--dim);
     font-size:8px; line-height:1.3; }
   .weight-list { display:grid; grid-template-columns:1fr 1fr; gap:7px 12px; color:var(--dim); font-size:10px; }
   .weight-list span::before { content:'◇'; color:var(--steel); margin-right:6px; }
+  .scenario-panel { margin-top:12px; border:1px solid #2a3c49; border-radius:10px; padding:13px;
+    background:rgba(10,17,23,.82); }
+  .scenario-head { color:var(--steel); font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  .scenario-label { color:var(--dim); font-size:9px; margin:5px 0 10px; }
+  .scenario-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .scenario-stat { border:1px solid #22323e; border-radius:8px; padding:9px; color:var(--dim); }
+  .scenario-stat b { display:block; color:var(--text); margin-top:3px; }
+  .scenario-table { width:100%; margin-top:10px; border-collapse:collapse; font-size:10px; }
+  .scenario-table th,.scenario-table td { padding:6px; border-top:1px solid #22313c; text-align:right; }
+  .scenario-table th:first-child,.scenario-table td:first-child { text-align:left; }
   .context-readings { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .context-metric { padding:10px 0; border-top:1px solid #1d2a34; }
   .context-metric:first-of-type { border-top:0; padding-top:0; }
@@ -599,26 +609,26 @@
       </div>
       <div id="contextGrid" class="context-grid" hidden>
         <article class="context-card context-primary">
-          <div class="context-gauge" aria-label="Exploratory context composite is not scored">
+          <div id="contextGauge" class="context-gauge" aria-label="Exploratory present-conditions composite">
             <div class="context-gauge-value">
               <strong id="contextIndex">—</strong>
-              <span>not scored</span>
+              <span id="contextIndexLabel">not scored</span>
             </div>
           </div>
           <div>
             <h3>Context Index</h3>
             <div id="contextObserved" class="context-observed" data-context-value>— INSUFFICIENT DATA</div>
-            <div class="context-disclaimer">Exploratory composite · not a probability · not a signal. Formula and weights are deferred pending operator lock.</div>
+            <div class="context-disclaimer">exploratory composite · not a probability · not a signal · present conditions, not a forecast.</div>
           </div>
         </article>
         <article class="context-card">
           <h3>Signal Weights</h3>
-          <div class="weight-ring" aria-label="Provisional weights are unassigned"></div>
+          <div class="weight-ring" aria-label="Provisional Context Index weights"></div>
           <div class="weight-list">
-            <span>Price structure —</span><span>Options structure —</span>
-            <span>Participation —</span><span>Cross-asset —</span>
+            <span>Price structure 40%</span><span>Participation 30%</span>
+            <span>Cross-asset 25%</span><span>Options modifier 5%</span>
           </div>
-          <div class="context-disclaimer">PROVISIONAL · no scoring weight has been frozen or applied.</div>
+          <div class="context-disclaimer">PROVISIONAL · display heuristic only · options gamma is direction-agnostic.</div>
         </article>
         <div class="context-readings">
           <article class="context-card">
@@ -1416,6 +1426,7 @@ async function runPrecheck(){
     const coherence=(w.coherence||[]).map(x=>'<div class="tag">'+esc(x.detail)+'</div>').join('');
     const biases=(w.bias_notes||[]).map(x=>'<div class="tag"><b>'+esc(x.signal)+':</b> '+esc(x.note)+'</div>').join('');
     const historical=await renderHistoricalFit(s);
+    const scenario=$('type').value==='option' ? await loadOptionScenario(s,esc) : '';
     $('pcOut').innerHTML=
       '<div style="margin:8px 0 2px;color:var(--steel);font-weight:700;letter-spacing:.08em">'+
         esc(p.direction.toUpperCase()+' '+p.symbol+'?')+'</div>'+
@@ -1439,9 +1450,54 @@ async function runPrecheck(){
         biases+
         '<div class="tag" style="margin-top:8px;color:var(--faint)">'+esc(p.disclaimer)+'</div>'+
         historical+
-      '</details>';
+      '</details>'+scenario;
   }catch(e){ lastPrecheckSnapshot=null; $('pcOut').innerHTML='<span style="color:var(--blade)">Check failed: '+e.message+'</span>'; }
   $('checkBtn').disabled=false;
+}
+
+const OPTION_SCENARIO_SOURCE_URL='http://127.0.0.1:8422/scenario';
+const OPTION_SCENARIO_LABEL='mechanical scenarios given an assumed move — not a forecast or a trade signal.';
+
+function renderOptionScenario(scenario,esc){
+  if(!scenario||scenario.status!=='AVAILABLE'){
+    return '<div class="scenario-panel"><div class="scenario-head">Option scenarios</div>'+
+      '<div class="scenario-label">'+esc(OPTION_SCENARIO_LABEL)+'</div>'+
+      '<div class="tag" style="color:var(--amber)">Unavailable · '+esc((scenario||{}).reason||'live quote unavailable')+'</div></div>';
+  }
+  const be=scenario.breakeven;
+  const em=scenario.expected_move;
+  const signed=n=>Number(n)>=0?'+'+Number(n).toFixed(2):Number(n).toFixed(2);
+  const money=n=>(Number(n)>=0?'+':'')+'$'+Number(n).toFixed(2);
+  const rows=(scenario.scenario_rows||[]).map(row=>{
+    const available=row.status==='AVAILABLE';
+    return '<tr><td>'+signed(row.underlying_move_points)+'</td><td>'+
+      (available?signed(row.option_change_points):'unavailable')+'</td><td>'+
+      (available?signed(row.pnl_pct)+'%':'unavailable')+'</td><td>'+
+      (available?money(row.pnl_dollars):'unavailable')+'</td></tr>';
+  }).join('');
+  const expected=em
+    ? Number(em.lower).toFixed(2)+' – '+Number(em.upper).toFixed(2)+' (±'+Number(em.points).toFixed(2)+')'
+    : 'unavailable';
+  return '<div class="scenario-panel"><div class="scenario-head">Option scenarios</div>'+
+    '<div class="scenario-label">'+esc(OPTION_SCENARIO_LABEL)+'</div>'+
+    '<div class="scenario-summary"><div class="scenario-stat">Breakeven · '+esc(scenario.right)+
+      '<b>'+(be?Number(be.price).toFixed(2)+' · '+signed(be.underlying_move_pct)+'% from spot':'unavailable')+'</b></div>'+
+      '<div class="scenario-stat">IV-implied range to expiry<b>'+expected+'</b></div></div>'+
+    '<table class="scenario-table"><thead><tr><th>SPY move</th><th>Option Δ</th><th>P&amp;L %</th><th>P&amp;L $</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="tag" style="margin-top:7px;color:var(--faint)">Live point-in-time arithmetic · IV '+
+      esc((em||{}).iv_source||'unavailable')+' · greeks '+esc((scenario.greeks||{}).source||'unavailable')+'</div></div>';
+}
+
+async function loadOptionScenario(symbol,esc){
+  try{
+    const qty=Math.max(1,parseInt($('alloc').value||'1',10));
+    const url=OPTION_SCENARIO_SOURCE_URL+'?symbol='+encodeURIComponent(symbol)+'&qty='+encodeURIComponent(qty);
+    const response=await fetch(url,{cache:'no-store'});
+    if(!response.ok) throw new Error('HTTP '+response.status);
+    return renderOptionScenario(await response.json(),esc);
+  }catch(error){
+    return renderOptionScenario({status:'UNAVAILABLE',reason:'read-only scenario service unavailable'},esc);
+  }
 }
 
 async function runPremarket(){
@@ -1734,6 +1790,9 @@ function renderContextUnavailable(reason='STALE — DO NOT INTERPRET') {
   warning.className = 'context-warning stale';
   warning.textContent = `${reason} · — INSUFFICIENT DATA`;
   $('contextIndex').textContent = '—';
+  $('contextIndex').style.color = 'var(--dim)';
+  $('contextIndexLabel').textContent = 'not scored';
+  $('contextGauge').style.background = 'conic-gradient(#263944 0 0%, #18222b 0 100%)';
   document.querySelectorAll('[data-context-value]').forEach(element => {
     element.textContent = '— INSUFFICIENT DATA';
   });
@@ -1753,7 +1812,7 @@ function renderContextNotStarted() {
   setContextHealthState('not_started');
 }
 
-function renderContextRecord(record) {
+function renderContextRecord(record, contextIndex) {
   const observedAt = Date.parse(record.observed_at_utc || '');
   const ageSeconds = Number.isFinite(observedAt) ? Math.max(0, (Date.now() - observedAt) / 1000) : Infinity;
   const ledgerFreshness = String(record.data_freshness || 'STALE').toUpperCase();
@@ -1790,7 +1849,20 @@ function renderContextRecord(record) {
     observed = Number(vwapBps) > 0 ? 'OBSERVED ABOVE VWAP' : Number(vwapBps) < 0 ? 'OBSERVED BELOW VWAP' : 'OBSERVED AT VWAP';
   }
   $('contextObserved').textContent = observed;
-  $('contextIndex').textContent = '—';
+  const scored = contextIndex && contextIndex.status === 'SCORED' && Number.isFinite(Number(contextIndex.score));
+  if (scored) {
+    const score = Number(contextIndex.score);
+    const gaugeColor = score > 55 ? 'var(--green)' : score < 45 ? 'var(--blade)' : 'var(--amber)';
+    $('contextIndex').textContent = String(Math.round(score));
+    $('contextIndex').style.color = gaugeColor;
+    $('contextIndexLabel').textContent = 'present conditions';
+    $('contextGauge').style.background = `conic-gradient(${gaugeColor} 0 ${score}%, #18222b ${score}% 100%)`;
+  } else {
+    $('contextIndex').textContent = '—';
+    $('contextIndex').style.color = 'var(--dim)';
+    $('contextIndexLabel').textContent = 'not scored';
+    $('contextGauge').style.background = 'conic-gradient(#263944 0 0%, #18222b 0 100%)';
+  }
 
   const signed = value => {
     const number = Number(value);
@@ -1799,7 +1871,7 @@ function renderContextRecord(record) {
   const priceValue = Number.isFinite(Number(vwapBps)) ? `${signed(vwapBps)} bps vs VWAP` : null;
   setContextValue('contextPriceValue', priceValue, `SPY ${contextNumber(spyMid, 2)} · opening range ${openingRange || '—'}`);
   setContextValue('contextOptionsValue', gammaRegime ? `${String(gammaRegime).toUpperCase()} GAMMA` : null,
-    `flip ${contextNumber(gammaFlip, 2)} · walls ${contextNumber(putWall, 2)} / ${contextNumber(callWall, 2)}`);
+    `flip ${contextNumber(gammaFlip, 2)} · walls ${contextNumber(putWall, 2)} / ${contextNumber(callWall, 2)} · ${(contextIndex||{}).options_modifier||'direction unknown'}`);
   setContextValue('contextBreadthValue', Number.isFinite(Number(breadth)) ? `${(Number(breadth) * 100).toFixed(0)}% advancing` : null,
     `${breadthCount || '—'} of fixed 10-name proxy observed`);
   const crossValue = Number.isFinite(Number(qqq)) && Number.isFinite(Number(iwm))
@@ -1830,7 +1902,7 @@ async function refreshContextPanel() {
       renderContextUnavailable('STALE — DO NOT INTERPRET');
       return;
     }
-    renderContextRecord(payload.record);
+    renderContextRecord(payload.record, payload.context_index);
   } catch (error) {
     renderContextUnavailable('STALE — DO NOT INTERPRET');
   }

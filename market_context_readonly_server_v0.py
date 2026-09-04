@@ -10,6 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from market_context_index_v0 import compute_context_index
+
 
 DEFAULT_LEDGER = Path("market_context_shadow_v0.jsonl")
 DEFAULT_HOST = "127.0.0.1"
@@ -51,6 +53,7 @@ def response_payload(path: Path) -> dict[str, Any]:
     return {
         "execution_authority": False,
         "is_inferential": False,
+        "context_index": compute_context_index(record),
         "ledger_status": status,
         "record": record,
         "record_count": record_count,
