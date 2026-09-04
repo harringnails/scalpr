@@ -54,6 +54,7 @@ def test_early_close_shortens_both_poll_streams():
     context, flash = commands[0][0], commands[1][0]
     assert context[context.index("--polls") + 1] == "210"
     assert flash[flash.index("--polls") + 1] == "42"
+    assert "multi_instrument_signal_v0.py" in commands[2][0][1]
 
 
 def test_closed_day_starts_no_capture_or_evaluator(tmp_path):
@@ -66,6 +67,23 @@ def test_closed_day_starts_no_capture_or_evaluator(tmp_path):
     assert result["status"] == "SKIPPED_MARKET_CLOSED"
     assert result["execution_authority"] is False
     assert calls == []
+
+
+def test_premarket_starts_only_multi_market_then_rth_jobs(tmp_path):
+    launched = []
+    before = OPEN - timedelta(hours=5, minutes=30)
+    times = iter((OPEN + timedelta(seconds=1), CLOSE, CLOSE + timedelta(seconds=5)))
+    result = runner.run_session(
+        now=before, calendar_row=CALENDAR, status_path=tmp_path / "status.json",
+        popen=lambda command, cwd: (launched.append((command, cwd)) or Child()),
+        run=lambda *args, **kwargs: Completed(), sleep=lambda _seconds: None,
+        clock=lambda: next(times),
+    )
+    assert result["status"] == "COMPLETE"
+    assert "multi_instrument_signal_v0.py" in launched[0][0][1]
+    assert "poll-market" in launched[0][0]
+    assert sum("poll-market" in command for command, _cwd in launched) == 1
+    assert "market_context_shadow_v0.py" in launched[1][0][1]
 
 
 def test_session_runs_captures_then_both_evaluators_once(tmp_path):
@@ -86,12 +104,14 @@ def test_session_runs_captures_then_both_evaluators_once(tmp_path):
         popen=popen, run=run, sleep=lambda _seconds: None, clock=lambda: CLOSE,
     )
     assert result["status"] == "COMPLETE"
-    assert len(launched) == 2
+    assert len(launched) == 4
     assert "market_context_shadow_v0.py" in launched[0][0][1]
     assert "flashalpha_pin_ic_shadow_v0.py" in launched[1][0][1]
-    assert len(evaluated) == 2
+    assert len(evaluated) == 4
     assert "prior_regime_flip_reclaim_logger_v0.py" in evaluated[0][0][1]
     assert "intraday_continuation_logger_v0.py" in evaluated[1][0][1]
+    assert "multi_instrument_signal_v0.py" in evaluated[2][0][1]
+    assert evaluated[3][0][-1] == "report"
     assert json.loads(status.read_text())["status"] == "COMPLETE"
 
 
@@ -110,3 +130,4 @@ def test_launch_artifacts_are_session_scoped_and_have_no_keepalive():
     assert "scalp_server.py" not in plist + launcher
     assert "caffeinate -i" in launcher
     assert "signal_study_session_runner_v0.py" in launcher
+    assert "<integer>2</integer>" in plist and "<integer>55</integer>" in plist

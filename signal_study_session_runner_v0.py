@@ -30,6 +30,7 @@ STATUS_PATH = LIVE_ROOT / "signal_study_session_status_v0.json"
 LOCK_PATH = Path("/tmp/com.scalpr.signal-studies-session-v0.lock")
 CONTEXT_INTERVAL_SECONDS = 60
 FLASH_INTERVAL_SECONDS = 300
+MULTI_MARKET_INTERVAL_SECONDS = 5
 
 
 def atomic_json(path: Path, value: dict[str, Any]) -> None:
@@ -92,7 +93,15 @@ def remaining_polls(now: datetime, close: datetime, interval_seconds: int) -> in
     return max(0, math.ceil(remaining / interval_seconds))
 
 
-def capture_commands(*, now: datetime, close: datetime) -> list[tuple[list[str], Path]]:
+def multi_market_command(*, now: datetime, close: datetime) -> tuple[list[str], Path] | None:
+    market_polls = remaining_polls(now, close, MULTI_MARKET_INTERVAL_SECONDS)
+    if not market_polls:
+        return None
+    return ([str(PYTHON), str(LIVE_ROOT / "multi_instrument_signal_v0.py"), "poll-market",
+             "--polls", str(market_polls), "--interval-seconds", str(MULTI_MARKET_INTERVAL_SECONDS)], LIVE_ROOT)
+
+
+def capture_commands(*, now: datetime, close: datetime, include_multi_market: bool = True) -> list[tuple[list[str], Path]]:
     context_polls = remaining_polls(now, close, CONTEXT_INTERVAL_SECONDS)
     flash_polls = remaining_polls(now, close, FLASH_INTERVAL_SECONDS)
     commands: list[tuple[list[str], Path]] = []
@@ -107,6 +116,13 @@ def capture_commands(*, now: datetime, close: datetime) -> list[tuple[list[str],
             str(PYTHON), str(FLASH_ROOT / "flashalpha_pin_ic_shadow_v0.py"), "study-poll",
             "--polls", str(flash_polls), "--interval-seconds", str(FLASH_INTERVAL_SECONDS),
         ], FLASH_ROOT))
+        commands.append(([
+            str(PYTHON), str(LIVE_ROOT / "multi_instrument_signal_v0.py"), "poll-flash",
+            "--polls", str(flash_polls), "--interval-seconds", str(FLASH_INTERVAL_SECONDS),
+        ], LIVE_ROOT))
+    market = multi_market_command(now=now, close=close) if include_multi_market else None
+    if market:
+        commands.append(market)
     return commands
 
 
@@ -116,6 +132,9 @@ def evaluator_commands(session_date: str) -> list[list[str]]:
     return [
         [str(PYTHON), str(LIVE_ROOT / "prior_regime_flip_reclaim_logger_v0.py"), "evaluate", *shared],
         [str(PYTHON), str(LIVE_ROOT / "intraday_continuation_logger_v0.py"), "evaluate", *shared],
+        [str(PYTHON), str(LIVE_ROOT / "multi_instrument_signal_v0.py"), "evaluate",
+         "--session-date", session_date],
+        [str(PYTHON), str(LIVE_ROOT / "multi_instrument_signal_v0.py"), "report"],
     ]
 
 
@@ -142,7 +161,11 @@ def run_session(
     if prior.get("session_date") == session_date and prior.get("status") in {"RUNNING", "COMPLETE"}:
         return {**authority, "session_date": session_date, "status": "SKIPPED_ALREADY_STARTED"}
 
+    early_market_child = None
     if now < opened:
+        market = multi_market_command(now=now, close=closed)
+        if market:
+            early_market_child = popen(market[0], cwd=market[1])
         sleep((opened - now).total_seconds() + 1.0)
         now = clock()
     if now >= closed:
@@ -154,7 +177,9 @@ def run_session(
         **authority, "market_close_utc": closed.isoformat(), "market_open_utc": opened.isoformat(),
         "session_date": session_date, "started_at_utc": now.isoformat(), "status": "RUNNING",
     })
-    children = [popen(command, cwd=cwd) for command, cwd in capture_commands(now=now, close=closed)]
+    children = ([early_market_child] if early_market_child else []) + [
+        popen(command, cwd=cwd) for command, cwd in capture_commands(
+            now=now, close=closed, include_multi_market=early_market_child is None)]
     capture_codes = [child.wait() for child in children]
     remaining = (closed - clock()).total_seconds()
     if remaining > 0:
