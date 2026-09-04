@@ -14,14 +14,11 @@ class Response:
     def __init__(self, payload):
         self.payload = payload
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
+    def raise_for_status(self):
         return None
 
-    def read(self):
-        return json.dumps(self.payload).encode()
+    def json(self):
+        return self.payload
 
 
 class Child:
@@ -40,12 +37,12 @@ class Completed:
 def test_calendar_closed_day_and_session_bounds():
     closed = runner.market_calendar(
         date(2026, 9, 7), api_key="key", api_secret="secret",
-        opener=lambda *_args, **_kwargs: Response([]),
+        requester=lambda *_args, **_kwargs: Response([]),
     )
     assert closed is None
     row = runner.market_calendar(
         date(2026, 9, 8), api_key="key", api_secret="secret",
-        opener=lambda *_args, **_kwargs: Response([CALENDAR]),
+        requester=lambda *_args, **_kwargs: Response([CALENDAR]),
     )
     assert runner.session_bounds(row) == (OPEN, CLOSE)
 

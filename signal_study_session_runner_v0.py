@@ -15,8 +15,9 @@ from datetime import date, datetime, time as clock_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
+
+import requests
 
 
 ET = ZoneInfo("America/New_York")
@@ -51,15 +52,15 @@ def market_calendar(
     *,
     api_key: str,
     api_secret: str,
-    opener: Callable[..., Any] = urlopen,
+    requester: Callable[..., Any] = requests.get,
 ) -> dict[str, Any] | None:
-    query = urlencode({"start": session_date.isoformat(), "end": session_date.isoformat()})
-    request = Request(
-        f"{ALPACA_CALENDAR_URL}?{query}",
+    response = requester(
+        f"{ALPACA_CALENDAR_URL}?{urlencode({'start': session_date.isoformat(), 'end': session_date.isoformat()})}",
         headers={"APCA-API-KEY-ID": api_key, "APCA-API-SECRET-KEY": api_secret},
+        timeout=15,
     )
-    with opener(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    response.raise_for_status()
+    payload = response.json()
     if not isinstance(payload, list) or not payload:
         return None
     row = payload[0]
