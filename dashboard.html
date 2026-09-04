@@ -135,7 +135,7 @@
     0%,88%,90%,96%,100% { opacity:1; } 89% { opacity:.6; } 95% { opacity:.8; }
   }
   @media (prefers-reduced-motion:reduce) {
-    .word.on-red,.word.on-green { animation:none; }
+    .word.on-red,.word.on-green,.quick-btn.danger.armed,.value-tick { animation:none; }
   }
   .utility-row { display:flex; justify-content:flex-end; margin-top:8px; }
   .research-drawer { width:100%; border:0; }
@@ -323,6 +323,24 @@
   .scenario-table { width:100%; margin-top:10px; border-collapse:collapse; font-size:10px; }
   .scenario-table th,.scenario-table td { padding:6px; border-top:1px solid #22313c; text-align:right; }
   .scenario-table th:first-child,.scenario-table td:first-child { text-align:left; }
+  .quick-strip { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:0 0 11px; }
+  .quick-strip .tag { margin-right:2px; }
+  .quick-btn { padding:6px 9px; border-color:#2a4050; color:var(--steel); font-size:10px; }
+  .quick-btn:hover { border-color:var(--steel); color:var(--text); }
+  .quick-btn.danger.armed { border-color:var(--blade); background:#3a1117; color:#ffb3b9;
+    animation:armPulse .8s ease-in-out infinite alternate; }
+  @keyframes armPulse { from { box-shadow:0 0 0 rgba(255,80,96,0); } to { box-shadow:0 0 14px rgba(255,80,96,.28); } }
+  .hotkey-drawer { margin-top:10px; border-top:1px solid var(--edge); padding-top:9px; }
+  .hotkey-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px 14px;
+    margin-top:8px; color:var(--dim); font-size:10px; }
+  kbd { display:inline-block; min-width:19px; padding:2px 5px; margin-right:5px; text-align:center;
+    color:var(--text); background:#101a22; border:1px solid #344654; border-bottom-width:2px; border-radius:4px; }
+  .updated-age { color:var(--faint); font-size:9px; font-variant-numeric:tabular-nums; }
+  [data-context-value], .context-gauge-value strong, .c-big, .c-lastentry, .c-peak, .c-tol, .c-sells {
+    transition:color .18s ease, opacity .18s ease, transform .18s ease;
+  }
+  .value-tick { animation:valueTick .26s ease-out; }
+  @keyframes valueTick { from { opacity:.55; transform:translateY(1px); } to { opacity:1; transform:translateY(0); } }
   .context-readings { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .context-metric { padding:10px 0; border-top:1px solid #1d2a34; }
   .context-metric:first-of-type { border-top:0; padding-top:0; }
@@ -420,6 +438,11 @@
           <span class="step-title" id="contractStepTitle">Contract</span>
         </div>
         <div id="optBuilder" class="contract-builder" style="display:none">
+          <div class="quick-strip" aria-label="Contract presets">
+            <span class="tag">Quick contract</span>
+            <button type="button" class="quick-btn" onclick="applyContractPreset('SPY','C')">SPY call · nearest expiry</button>
+            <button type="button" class="quick-btn" onclick="applyContractPreset('SPY','P')">SPY put · nearest expiry</button>
+          </div>
           <div class="field-grid">
           <label>Underlying
             <input id="optUnderlying" placeholder="SPY"
@@ -479,6 +502,13 @@
               <option value="guard">Guard existing position</option>
             </select>
           </label>
+        </div>
+        <div class="quick-strip" style="margin:10px 0 0" aria-label="Quantity presets">
+          <span class="tag">Quick quantity</span>
+          <button type="button" class="quick-btn" onclick="setQuantityPreset(1)">1</button>
+          <button type="button" class="quick-btn" onclick="setQuantityPreset(2)">2</button>
+          <button type="button" class="quick-btn" onclick="setQuantityPreset(5)">5</button>
+          <button type="button" id="quickFlattenBtn" class="quick-btn danger" onclick="armFlattenQuickAction()">Arm flatten</button>
         </div>
       </section>
 
@@ -584,6 +614,17 @@
         <span id="cpFlash" class="cp-flash"></span>
         <div id="msg"></div>
         <div id="pcOut" style="margin-top:12px;font-size:12px;line-height:1.6"></div>
+        <details id="hotkeyLegend" class="hotkey-drawer">
+          <summary>Hotkeys</summary>
+          <div class="hotkey-grid">
+            <span><kbd>/</kbd>focus symbol</span><span><kbd>C</kbd>toggle call / put</span>
+            <span><kbd>[</kbd>/<kbd>]</kbd>quantity − / +</span><span><kbd>L</kbd>load quote</span>
+            <span><kbd>P</kbd>run pre-check</span><span><kbd>E</kbd>exit rules</span>
+            <span><kbd>X</kbd>experimental</span><span><kbd>?</kbd>toggle this legend</span>
+            <span><kbd>⌘/Ctrl</kbd>+<kbd>Enter</kbd>ENGAGE</span><span><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>flatten all</span>
+          </div>
+          <div class="tag" style="margin-top:8px;color:var(--amber)">ENGAGE and flatten require deliberate modifier chords. The visible flatten action requires arm, then confirm.</div>
+        </details>
       </section>
     </form>
   </div>
@@ -601,6 +642,7 @@
             <input id="contextAlertsEnabled" type="checkbox" onchange="toggleContextAlerts()">
             Enable health alerts
           </label>
+          <span id="contextUpdated" class="updated-age">updated —</span>
           <span id="contextFreshness" class="context-freshness">CAPTURE: NOT STARTED</span>
         </div>
       </header>
@@ -876,6 +918,79 @@ $('ladder').addEventListener('input', updateExitSummary);
 for (const id of ['stallSec', 'stallMin', 'graceSec', 'confirmTicks']) {
   $(id).addEventListener('input', updateExitSummary);
 }
+
+function setQuantityPreset(quantity) {
+  $('alloc').value = Math.max(1, parseInt(quantity, 10) || 1);
+  $('alloc').dispatchEvent(new Event('input', {bubbles:true}));
+}
+
+async function applyContractPreset(underlying, side) {
+  $('optUnderlying').value = String(underlying).toUpperCase();
+  $('optCP').value = side === 'P' ? 'P' : 'C';
+  updateManualScopeWarning();
+  await loadExpirations();
+}
+
+let destructiveArm = {action:null, expiresAt:0};
+function clearDestructiveArm() {
+  destructiveArm = {action:null, expiresAt:0};
+  const button = $('quickFlattenBtn');
+  if (button) { button.textContent = 'Arm flatten'; button.classList.remove('armed'); }
+}
+
+function armFlattenQuickAction(now=Date.now()) {
+  if (destructiveArm.action === 'flatten' && now <= destructiveArm.expiresAt) {
+    clearDestructiveArm();
+    return liquidateAll();
+  }
+  destructiveArm = {action:'flatten', expiresAt:now + 5000};
+  const button = $('quickFlattenBtn');
+  button.textContent = 'Confirm flatten · 5s';
+  button.classList.add('armed');
+  setTimeout(() => {
+    if (destructiveArm.action === 'flatten' && Date.now() > destructiveArm.expiresAt) clearDestructiveArm();
+  }, 5100);
+}
+
+function isTypingTarget(target) {
+  return !!target && (target.isContentEditable || ['INPUT','SELECT','TEXTAREA'].includes(target.tagName));
+}
+
+function toggleDetail(id) {
+  const detail = $(id);
+  if (detail) detail.open = !detail.open;
+}
+
+function handleDashboardHotkey(event) {
+  if (event.repeat) return;
+  const key = event.key;
+  const lower = key.toLowerCase();
+  if ((event.metaKey || event.ctrlKey) && key === 'Enter') {
+    event.preventDefault();
+    submitTrade();
+    return;
+  }
+  if (event.altKey && event.shiftKey && lower === 'x') {
+    event.preventDefault();
+    liquidateAll();
+    return;
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
+  const actions = {
+    '/': () => { $('optUnderlying').focus(); $('optUnderlying').select(); },
+    'c': () => { $('optCP').value = $('optCP').value === 'C' ? 'P' : 'C'; $('optCP').dispatchEvent(new Event('change')); },
+    '[': () => setQuantityPreset((parseInt($('alloc').value, 10) || 1) - 1),
+    ']': () => setQuantityPreset((parseInt($('alloc').value, 10) || 1) + 1),
+    'l': () => quoteContract(),
+    'p': () => runPrecheck(),
+    'e': () => toggleDetail('exitSettings'),
+    'x': () => toggleDetail('experimentalSettings'),
+    '?': () => toggleDetail('hotkeyLegend')
+  };
+  const action = actions[lower] || actions[key];
+  if (action) { event.preventDefault(); action(); }
+}
+document.addEventListener('keydown', handleDashboardHotkey);
 
 // recompute est. cost when qty changes
 $('alloc').addEventListener('input', () => { updateCost(); updateTradeReview(); });
@@ -1688,6 +1803,23 @@ async function refreshMicroRead() {
 const CONTEXT_SOURCE_URL = 'http://127.0.0.1:8421/latest';
 const CONTEXT_MAX_AGE_SECONDS = 120;
 const CONTEXT_STALE_ALERT_DEDUP_MS = 15 * 60 * 1000;
+let contextObservedAtMs = null;
+
+function tickText(element, value) {
+  if (!element || element.textContent === value) return;
+  element.textContent = value;
+  element.classList.remove('value-tick');
+  void element.offsetWidth;
+  element.classList.add('value-tick');
+}
+
+function updateContextAgeLabel(now=Date.now()) {
+  const label = $('contextUpdated');
+  if (!label) return;
+  if (!Number.isFinite(contextObservedAtMs)) { label.textContent = 'updated —'; return; }
+  const age = Math.max(0, Math.floor((now - contextObservedAtMs) / 1000));
+  label.textContent = `updated ${age}s ago`;
+}
 let contextHealthState = 'unknown';
 let contextAlertsEnabled = false;
 let contextLastStaleAlertAt = 0;
@@ -1776,7 +1908,7 @@ function contextNumber(value, digits=1, suffix='') {
 
 function setContextValue(id, value, note='') {
   const element = $(id);
-  if (element) element.textContent = value == null || value === '' ? '— INSUFFICIENT DATA' : String(value);
+  if (element) tickText(element, value == null || value === '' ? '— INSUFFICIENT DATA' : String(value));
   const noteElement = $(`${id.replace(/Value$/, '')}Note`);
   if (noteElement) noteElement.textContent = note;
 }
@@ -1802,6 +1934,8 @@ function renderContextUnavailable(reason='STALE — DO NOT INTERPRET') {
 }
 
 function renderContextNotStarted() {
+  contextObservedAtMs = null;
+  updateContextAgeLabel();
   $('contextGrid').hidden = true;
   const freshness = $('contextFreshness');
   freshness.className = 'context-freshness';
@@ -1814,6 +1948,8 @@ function renderContextNotStarted() {
 
 function renderContextRecord(record, contextIndex) {
   const observedAt = Date.parse(record.observed_at_utc || '');
+  contextObservedAtMs = Number.isFinite(observedAt) ? observedAt : null;
+  updateContextAgeLabel();
   const ageSeconds = Number.isFinite(observedAt) ? Math.max(0, (Date.now() - observedAt) / 1000) : Infinity;
   const ledgerFreshness = String(record.data_freshness || 'STALE').toUpperCase();
   if (ledgerFreshness === 'STALE' || ageSeconds > CONTEXT_MAX_AGE_SECONDS) {
@@ -2090,20 +2226,26 @@ if (location.protocol === 'file:') {
 // stack duplicate requests when Alpaca or a file-backed endpoint is slow.
 function scheduleRefresh(fn, cadenceMs) {
   let timer = null;
+  let nextAt = performance.now() + cadenceMs;
   const run = async () => {
     try { await fn(); }
-    finally { timer = setTimeout(run, cadenceMs); }
+    finally {
+      const now = performance.now();
+      while (nextAt <= now) nextAt += cadenceMs;
+      timer = setTimeout(run, Math.max(0, nextAt - now));
+    }
   };
   timer = setTimeout(run, cadenceMs);
   return () => clearTimeout(timer);
 }
-scheduleRefresh(refresh, 500);
+scheduleRefresh(refresh, 750);
 scheduleRefresh(refreshMarketSign, 5000);
 scheduleRefresh(refreshJournal, 10000);
-scheduleRefresh(refreshHoldings, 3000);
+scheduleRefresh(refreshHoldings, 2000);
 scheduleRefresh(refreshStats, 10000);
 scheduleRefresh(refreshMicroRead, 15000);
-scheduleRefresh(refreshContextPanel, 30000);
+scheduleRefresh(refreshContextPanel, 5000);
+scheduleRefresh(updateContextAgeLabel, 1000);
 scheduleRefresh(refreshBanners, 60000);   // premarket is cached ~60s server-side
 scheduleRefresh(refreshEntryRead, 15000); // minute-bar driven; caught within ~15s
 scheduleRefresh(refreshDirectionalShadow, 15000);

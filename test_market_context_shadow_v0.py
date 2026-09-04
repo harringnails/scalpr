@@ -105,3 +105,37 @@ def test_rth_and_until_close_boundaries():
     assert context.in_rth(datetime(2026, 9, 3, 20, 0, tzinfo=timezone.utc)) is False
     assert context.seconds_until_close(datetime(2026, 9, 3, 19, 59, tzinfo=timezone.utc)) == 60
     assert context.seconds_until_close(datetime(2026, 9, 3, 20, 1, tzinfo=timezone.utc)) == 0
+
+
+def test_aligned_polling_stays_regular_and_refetches_each_capture(tmp_path):
+    at_36_seconds = NOW.replace(second=36)
+    assert context.seconds_to_aligned_poll(at_36_seconds, 60) == 29
+    assert context.seconds_to_aligned_poll(NOW.replace(second=5), 60) == 60
+
+    class Source:
+        calls = 0
+
+        def fetch(self, now):
+            self.calls += 1
+            return raw_fixture()
+
+    source = Source()
+    output = tmp_path / "context.jsonl"
+    context.capture_once(source, output=output, flashalpha_ledger=None, now=NOW)
+    context.capture_once(source, output=output, flashalpha_ledger=None, now=NOW)
+    assert source.calls == 2
+    assert len(output.read_text().splitlines()) == 2
+
+
+def test_steady_state_bar_age_is_clean_but_cold_feed_remains_stale():
+    steady = raw_fixture()
+    for symbol_bars in steady["bars"].values():
+        symbol_bars[-1]["timestamp"] = (NOW - timedelta(seconds=65)).isoformat()
+    clean = context.build_record(steady, observed_at=NOW, flashalpha=flash_fixture())
+    assert clean["data_freshness"] == "CLEAN"
+
+    cold = raw_fixture()
+    for symbol_bars in cold["bars"].values():
+        symbol_bars[-1]["timestamp"] = (NOW - timedelta(seconds=181)).isoformat()
+    stale = context.build_record(cold, observed_at=NOW, flashalpha=flash_fixture())
+    assert stale["data_freshness"] == "STALE"

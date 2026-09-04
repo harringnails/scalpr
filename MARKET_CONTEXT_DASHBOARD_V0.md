@@ -13,7 +13,9 @@ cd "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7"
 
 Keep the existing operator-started `scalp_server.py` process unchanged. No restart is required when `dashboard.html` changes; refresh `http://127.0.0.1:8420/` in the browser.
 
-The panel polls `http://127.0.0.1:8421/latest` every 30 seconds. A missing or empty ledger has zero observations and renders the calm `CONTEXT CAPTURE NOT RUNNING` state. After at least one observation exists, a latest record older than 120 seconds or stamped `STALE` renders `STALE — DO NOT INTERPRET` with blank readings.
+The panel polls `http://127.0.0.1:8421/latest` every 5 seconds and updates its visible `updated Ns ago` clock once per second without repainting the panel. A missing or empty ledger has zero observations and renders the calm `CONTEXT CAPTURE NOT RUNNING` state. After at least one observation exists, a latest record older than 120 seconds or stamped `STALE` renders `STALE — DO NOT INTERPRET` with blank readings.
+
+The capture adapter performs a new Alpaca quote/bar batch request on every 30–60 second source poll. Repeated polls are aligned to a stable `:05` wall-clock phase rather than sleeping from the end of the previous request. This prevents request latency from progressively moving completed one-minute bars beyond the existing 90-second CLEAN threshold. It does not widen or weaken the 90-second CLEAN or 180-second STALE rules.
 
 ## Provisional Context Index
 

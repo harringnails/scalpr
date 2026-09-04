@@ -97,6 +97,8 @@ def test_empty_is_calm_but_records_older_than_120_seconds_are_stale():
     assert "setContextHealthState('not_started')" in not_started
     assert "ageSeconds > CONTEXT_MAX_AGE_SECONDS" in render
     assert "renderContextUnavailable('STALE — DO NOT INTERPRET')" in render
+    assert 'id="contextUpdated"' in html
+    assert "updateContextAgeLabel()" in render
 
 
 def test_health_tone_is_enabled_transition_only_and_deduplicated():

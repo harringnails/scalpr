@@ -341,6 +341,15 @@ def seconds_until_close(now: datetime) -> float:
     return max(0.0, (close - local).total_seconds())
 
 
+def seconds_to_aligned_poll(
+    now: datetime, interval_seconds: float, *, phase_seconds: float = 5.0,
+) -> float:
+    """Keep repeated fetches on a stable wall-clock phase instead of drifting."""
+    epoch = now.astimezone(timezone.utc).timestamp()
+    next_slot = (math.floor((epoch - phase_seconds) / interval_seconds) + 1) * interval_seconds
+    return max(0.0, next_slot + phase_seconds - epoch)
+
+
 def append_record(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -393,7 +402,11 @@ def main() -> int:
         }), flush=True)
         if not args.until_close and written >= polls:
             break
-        sleep_seconds = args.interval_seconds
+        # Every loop constructs a fresh Alpaca batch. Aligning to :05 avoids
+        # accumulating request-duration drift toward the 90-second CLEAN bound.
+        sleep_seconds = seconds_to_aligned_poll(
+            datetime.now(timezone.utc), args.interval_seconds,
+        )
         if args.until_close:
             sleep_seconds = min(sleep_seconds, seconds_until_close(datetime.now(timezone.utc)))
             if sleep_seconds <= 0:
