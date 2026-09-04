@@ -74,6 +74,7 @@ outputs/
 
 # all jsonl are append-only evidence data, never code
 *.jsonl
+signal_study_session_status_v0.json
 
 # csv data / logs / journals (evidence, not code)
 *.csv
