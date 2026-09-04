@@ -115,20 +115,21 @@ if [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
-# The study collector must not depend on an interactive Terminal remaining open.
-# It is intentionally launched by Terminal, which has the macOS privacy grant
-# for the protected Documents folder. The inherited Keychain-only credentials
-# remain in this process tree and are never written to disk.
-/usr/bin/nohup /usr/bin/caffeinate -is "$PYTHON_BIN" scalp_server.py --sip \
+# The operator-initiated Terminal remains the process supervisor. Caffeinate
+# prevents idle/system sleep while this server is running; there is no daemon
+# or unconditional auto-restart path.
+/usr/bin/caffeinate -is "$PYTHON_BIN" scalp_server.py --sip \
   >>"$SERVER_LOG" 2>>"$SERVER_ERROR_LOG" < /dev/null &
 SERVER_PID=$!
 echo "Scalpr server launch requested (pid $SERVER_PID)."
 
+SERVER_READY=0
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if lsof -tiTCP:8420 -sTCP:LISTEN >/dev/null 2>&1; then
     echo "Scalpr PAPER server is listening on http://127.0.0.1:8420."
     echo "Server log: $SERVER_LOG"
-    exit 0
+    SERVER_READY=1
+    break
   fi
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "Scalpr server exited during startup. Recent error output:"
@@ -138,6 +139,11 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
 done
 
-echo "Scalpr server did not open port 8420 within 10 seconds. Recent error output:"
-tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
-exit 1
+if [ "$SERVER_READY" -ne 1 ]; then
+  echo "Scalpr server did not open port 8420 within 10 seconds. Recent error output:"
+  tail -n 40 "$SERVER_ERROR_LOG" 2>/dev/null || true
+  exit 1
+fi
+
+echo "Operator lifecycle active; leave this Terminal tab open."
+wait "$SERVER_PID"

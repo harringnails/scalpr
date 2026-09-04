@@ -38,3 +38,5 @@ def test_restart_cold_start_and_sleep_survival_are_enforced():
     assert "paper_account_flat_check_v0.py" in source
     assert "/usr/bin/caffeinate -is" in source
     assert "REFUSING startup" in source
+    assert 'wait "$SERVER_PID"' in source
+    assert "/usr/bin/nohup" not in source
