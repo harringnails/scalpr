@@ -46,12 +46,15 @@ def test_submit_serializer_source_and_representative_payload_are_frozen():
     assert json.dumps(payload, separators=(",", ":")) == REPRESENTATIVE_PAYLOAD
 
 
-def test_context_panel_is_control_free_and_defaults_to_insufficient_data():
+def test_context_panel_only_has_health_toggle_and_defaults_to_calm_not_started():
     html = DASHBOARD.read_text()
     panel = re.search(r'<section id="scalprContext".*?</section>', html, re.S).group()
-    assert not re.search(r"<(button|input|select|textarea)\b", panel)
+    controls = re.findall(r"<(button|input|select|textarea)\b", panel)
+    assert controls == ["input"]
+    assert 'id="contextAlertsEnabled" type="checkbox"' in panel
     assert "SHADOW · READ-ONLY" in panel
-    assert "— INSUFFICIENT DATA" in panel
+    assert "CONTEXT CAPTURE NOT RUNNING — start it to populate" in panel
+    assert 'id="contextGrid" class="context-grid" hidden' in panel
     assert "EXPLORATORY / NON-INFERENTIAL" in panel
     assert "execution_authority" not in panel
 
@@ -66,6 +69,39 @@ def test_stale_and_missing_context_are_blanked_instead_of_rendered_live():
     assert "payload.ledger_status !== 'AVAILABLE'" in refresh
     assert "ageSeconds > CONTEXT_MAX_AGE_SECONDS" in render
     assert "ledgerFreshness === 'STALE'" in render
+
+
+def test_empty_is_calm_but_records_older_than_120_seconds_are_stale():
+    html = DASHBOARD.read_text()
+    refresh = function_source(html, "refreshContextPanel")
+    not_started = function_source(html, "renderContextNotStarted")
+    render = function_source(html, "renderContextRecord")
+    assert "payload.record_count === 0" in refresh
+    assert "['MISSING', 'EMPTY'].includes(payload.ledger_status)" in refresh
+    assert "context-warning not-started" in not_started
+    assert "setContextHealthState('not_started')" in not_started
+    assert "ageSeconds > CONTEXT_MAX_AGE_SECONDS" in render
+    assert "renderContextUnavailable('STALE — DO NOT INTERPRET')" in render
+
+
+def test_health_tone_is_enabled_transition_only_and_deduplicated():
+    html = DASHBOARD.read_text()
+    decision = function_source(html, "shouldPlayContextStaleTone")
+    transition = function_source(html, "setContextHealthState")
+    toggle = function_source(html, "toggleContextAlerts")
+    not_started = function_source(html, "renderContextNotStarted")
+    assert "!enabled || nextState !== 'stale'" in decision
+    assert "previousState === 'live'" in decision
+    assert "previousState === 'stale'" in decision
+    assert "now - lastAlertAt >= CONTEXT_STALE_ALERT_DEDUP_MS" in decision
+    assert "15 * 60 * 1000" in html
+    assert "contextAlertsEnabled" in transition
+    assert "playContextStaleHealthTone()" in transition
+    assert "dataset.lastHealthAlertAt = String(now)" in transition
+    assert "dataset.healthState = nextState" in transition
+    assert "playContextStaleHealthTone" not in not_started
+    assert "if (contextAlertsEnabled)" in toggle
+    assert "localStorage.setItem('scalpr.contextHealthAlerts'" in toggle
 
 
 def test_context_is_absent_from_trade_and_precheck_paths():

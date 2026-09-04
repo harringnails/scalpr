@@ -25,6 +25,7 @@ def test_latest_valid_observation_is_returned_without_modifying_ledger(tmp_path)
 
     assert payload["ledger_status"] == "AVAILABLE"
     assert payload["record"] == latest
+    assert payload["record_count"] == 2
     assert payload["execution_authority"] is False
     assert (ledger.read_bytes(), ledger.stat().st_mtime_ns) == before
 
@@ -32,11 +33,13 @@ def test_latest_valid_observation_is_returned_without_modifying_ledger(tmp_path)
 def test_missing_and_empty_ledgers_are_safe_insufficient_states(tmp_path):
     missing = server.response_payload(tmp_path / "missing.jsonl")
     assert missing["ledger_status"] == "MISSING" and missing["record"] is None
+    assert missing["record_count"] == 0
 
     empty_path = tmp_path / "empty.jsonl"
     empty_path.write_text("\n{bad-json\n")
     empty = server.response_payload(empty_path)
     assert empty["ledger_status"] == "EMPTY" and empty["record"] is None
+    assert empty["record_count"] == 0
 
 
 def test_source_has_no_ledger_write_path():

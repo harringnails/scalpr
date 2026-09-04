@@ -16,17 +16,19 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8421
 
 
-def read_latest_record(path: Path) -> tuple[str, dict[str, Any] | None]:
-    """Return the latest valid context observation without modifying the ledger."""
+def read_ledger_state(path: Path) -> tuple[str, dict[str, Any] | None, int]:
+    """Return latest context observation and valid-record count without writes."""
     try:
         with path.open("r", encoding="utf-8") as handle:
             lines = handle.readlines()
     except FileNotFoundError:
-        return "MISSING", None
+        return "MISSING", None, 0
     except OSError:
-        return "UNREADABLE", None
+        return "UNREADABLE", None, 0
 
-    for line in reversed(lines):
+    latest = None
+    count = 0
+    for line in lines:
         if not line.strip():
             continue
         try:
@@ -34,17 +36,24 @@ def read_latest_record(path: Path) -> tuple[str, dict[str, Any] | None]:
         except json.JSONDecodeError:
             continue
         if isinstance(record, dict) and record.get("record_type") == "MARKET_CONTEXT_OBSERVATION":
-            return "AVAILABLE", record
-    return "EMPTY", None
+            latest = record
+            count += 1
+    return ("AVAILABLE", latest, count) if latest is not None else ("EMPTY", None, 0)
+
+
+def read_latest_record(path: Path) -> tuple[str, dict[str, Any] | None]:
+    status, record, _ = read_ledger_state(path)
+    return status, record
 
 
 def response_payload(path: Path) -> dict[str, Any]:
-    status, record = read_latest_record(path)
+    status, record, record_count = read_ledger_state(path)
     return {
         "execution_authority": False,
         "is_inferential": False,
         "ledger_status": status,
         "record": record,
+        "record_count": record_count,
         "study_status": "EXPLORATORY_NON_INFERENTIAL",
     }
 

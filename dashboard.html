@@ -282,9 +282,14 @@
   .context-freshness.clean { color:var(--green); border-color:#256b49; background:#0c281b; }
   .context-freshness.degraded { color:var(--amber); border-color:#70521d; background:#2b200d; }
   .context-freshness.stale { color:#ff7884; border-color:#712b34; background:#2b1015; }
+  .context-health-actions { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .context-alert-toggle { display:flex; flex-direction:row; align-items:center; gap:7px; color:var(--dim);
+    font-size:10px; cursor:pointer; user-select:none; }
+  .context-alert-toggle input { width:auto; margin:0; accent-color:var(--steel); }
   .context-warning { margin:16px 18px 0; padding:11px 14px; border:1px solid #745a22;
     border-radius:9px; color:#e5c673; background:#2a220f; font-size:11px; line-height:1.55; }
   .context-warning.stale { color:#ff9ba4; border-color:#712b34; background:#2b1015; }
+  .context-warning.not-started { color:#91a2b2; border-color:#344653; background:#101922; }
   .context-grid { display:grid; grid-template-columns:.86fr 1.14fr; gap:14px; padding:18px; }
   .context-card { border:1px solid #25333f; border-radius:12px; padding:16px;
     background:rgba(12,19,26,.86); min-width:0; }
@@ -581,12 +586,18 @@
           <h2 id="contextTitle">SCALPR CONTEXT</h2>
           <span class="context-shadow-label">SHADOW · READ-ONLY</span>
         </div>
-        <span id="contextFreshness" class="context-freshness stale">DATA: NOT YET</span>
+        <div class="context-health-actions">
+          <label class="context-alert-toggle" title="Health alert only; never a trade cue">
+            <input id="contextAlertsEnabled" type="checkbox" onchange="toggleContextAlerts()">
+            Enable health alerts
+          </label>
+          <span id="contextFreshness" class="context-freshness">CAPTURE: NOT STARTED</span>
+        </div>
       </header>
-      <div id="contextWarning" class="context-warning stale">
-        STALE — DO NOT INTERPRET · — INSUFFICIENT DATA
+      <div id="contextWarning" class="context-warning not-started">
+        CONTEXT CAPTURE NOT RUNNING — start it to populate
       </div>
-      <div class="context-grid">
+      <div id="contextGrid" class="context-grid" hidden>
         <article class="context-card context-primary">
           <div class="context-gauge" aria-label="Exploratory context composite is not scored">
             <div class="context-gauge-value">
@@ -1620,6 +1631,78 @@ async function refreshMicroRead() {
 
 const CONTEXT_SOURCE_URL = 'http://127.0.0.1:8421/latest';
 const CONTEXT_MAX_AGE_SECONDS = 120;
+const CONTEXT_STALE_ALERT_DEDUP_MS = 15 * 60 * 1000;
+let contextHealthState = 'unknown';
+let contextAlertsEnabled = false;
+let contextLastStaleAlertAt = 0;
+let contextAudio = null;
+
+function shouldPlayContextStaleTone(previousState, nextState, lastAlertAt, now, enabled) {
+  if (!enabled || nextState !== 'stale') return false;
+  if (previousState === 'live') return true;
+  return previousState === 'stale' && lastAlertAt > 0 &&
+    now - lastAlertAt >= CONTEXT_STALE_ALERT_DEDUP_MS;
+}
+
+function playContextStaleHealthTone() {
+  try {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    contextAudio = contextAudio || new AudioCtor();
+    if (contextAudio.state === 'suspended') contextAudio.resume();
+    const oscillator = contextAudio.createOscillator();
+    const gain = contextAudio.createGain();
+    const start = contextAudio.currentTime;
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(520, start);
+    oscillator.frequency.setValueAtTime(390, start + 0.20);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.07, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+    gain.gain.setValueAtTime(0.0001, start + 0.19);
+    gain.gain.exponentialRampToValueAtTime(0.07, start + 0.22);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.38);
+    oscillator.connect(gain); gain.connect(contextAudio.destination);
+    oscillator.start(start); oscillator.stop(start + 0.40);
+  } catch (error) { /* health alert remains visibly represented */ }
+}
+
+function setContextHealthState(nextState) {
+  const now = Date.now();
+  if (shouldPlayContextStaleTone(
+    contextHealthState, nextState, contextLastStaleAlertAt, now, contextAlertsEnabled
+  )) {
+    playContextStaleHealthTone();
+    contextLastStaleAlertAt = now;
+    $('scalprContext').dataset.lastHealthAlertAt = String(now);
+  }
+  contextHealthState = nextState;
+  $('scalprContext').dataset.healthState = nextState;
+}
+
+function initContextAlerts() {
+  try { contextAlertsEnabled = localStorage.getItem('scalpr.contextHealthAlerts') === 'enabled'; }
+  catch (error) { contextAlertsEnabled = false; }
+  const toggle = $('contextAlertsEnabled');
+  if (toggle) toggle.checked = contextAlertsEnabled;
+}
+
+function toggleContextAlerts() {
+  const toggle = $('contextAlertsEnabled');
+  contextAlertsEnabled = !!(toggle && toggle.checked);
+  try {
+    localStorage.setItem('scalpr.contextHealthAlerts', contextAlertsEnabled ? 'enabled' : 'disabled');
+  } catch (error) {}
+  if (contextAlertsEnabled) {
+    try {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtor) {
+        contextAudio = contextAudio || new AudioCtor();
+        if (contextAudio.state === 'suspended') contextAudio.resume();
+      }
+    } catch (error) {}
+  }
+}
 
 function contextEnvelope(record, group, key) {
   return (((record || {}).fields || {})[group] || {})[key] || {};
@@ -1643,6 +1726,7 @@ function setContextValue(id, value, note='') {
 }
 
 function renderContextUnavailable(reason='STALE — DO NOT INTERPRET') {
+  $('contextGrid').hidden = false;
   const freshness = $('contextFreshness');
   freshness.className = 'context-freshness stale';
   freshness.textContent = 'DATA: STALE';
@@ -1655,6 +1739,18 @@ function renderContextUnavailable(reason='STALE — DO NOT INTERPRET') {
   });
   document.querySelectorAll('.context-metric-note').forEach(element => { element.textContent = ''; });
   document.querySelectorAll('[data-context-rule]').forEach(element => { element.className = 'context-rule stale'; });
+  setContextHealthState('stale');
+}
+
+function renderContextNotStarted() {
+  $('contextGrid').hidden = true;
+  const freshness = $('contextFreshness');
+  freshness.className = 'context-freshness';
+  freshness.textContent = 'CAPTURE: NOT STARTED';
+  const warning = $('contextWarning');
+  warning.className = 'context-warning not-started';
+  warning.textContent = 'CONTEXT CAPTURE NOT RUNNING — start it to populate';
+  setContextHealthState('not_started');
 }
 
 function renderContextRecord(record) {
@@ -1666,6 +1762,7 @@ function renderContextRecord(record) {
     return;
   }
 
+  $('contextGrid').hidden = false;
   const state = ledgerFreshness === 'CLEAN' ? 'clean' : 'degraded';
   const freshness = $('contextFreshness');
   freshness.className = `context-freshness ${state}`;
@@ -1717,6 +1814,7 @@ function renderContextRecord(record) {
   setContextValue('contextZeroDte', Number.isFinite(Number(zeroDte)) ? contextNumber(zeroDte, 1, '%') : null);
   setContextValue('contextBreadth', Number.isFinite(Number(breadth)) ? `${(Number(breadth) * 100).toFixed(0)}% · n=${breadthCount || '—'}` : null);
   setContextValue('contextEtfs', crossValue);
+  setContextHealthState('live');
 }
 
 async function refreshContextPanel() {
@@ -1724,6 +1822,10 @@ async function refreshContextPanel() {
     const response = await fetch(CONTEXT_SOURCE_URL, {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
+    if (payload.record_count === 0 && ['MISSING', 'EMPTY'].includes(payload.ledger_status)) {
+      renderContextNotStarted();
+      return;
+    }
     if (payload.ledger_status !== 'AVAILABLE' || !payload.record) {
       renderContextUnavailable('STALE — DO NOT INTERPRET');
       return;
@@ -1903,6 +2005,7 @@ async function refreshExploSummary() {
   } catch (e) { $('exploSummary').textContent = 'exploratory summary unavailable'; }
 }
 
+initContextAlerts();
 renderMarketSign(null);
 refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshContextPanel(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
 if (location.protocol === 'file:') {
