@@ -3,6 +3,9 @@
 # Run from anywhere:  bash "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7/restart.sh"
 # Frees port 8420 only if something is actually listening, then starts fresh.
 
+cd "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7" || exit 1
+. "./load_keychain_env.sh"
+
 PID=$(lsof -tiTCP:8420 -sTCP:LISTEN)
 if [ -n "$PID" ]; then
   ACCOUNT_PROOF=$(curl -fsS --max-time 8 \
@@ -40,13 +43,14 @@ except Exception:
   fi
 else
   echo "Port 8420 is free."
+  COLD_START_PROOF=$(.venv/bin/python paper_account_flat_check_v0.py)
+  if [ "$?" -ne 0 ]; then
+    echo "REFUSING startup: direct uncached PAPER account proof did not confirm active, flat, and no open orders."
+    echo "$COLD_START_PROOF"
+    exit 1
+  fi
+  echo "$COLD_START_PROOF"
 fi
-
-cd "/Users/natalieharrington/Documents/Scalpr Trading/Scalpr7" || exit 1
-
-# Optional Unusual Whales token. The token stays in macOS Keychain and is never
-# printed or stored in this repository.
-. "./load_keychain_env.sh"
 
 # Wave Riding shadow observer ON (Cohort A data collection).
 # Shadow-only: no live orders, Standard mode unaffected. Delete this line to turn
@@ -115,7 +119,7 @@ fi
 # It is intentionally launched by Terminal, which has the macOS privacy grant
 # for the protected Documents folder. The inherited Keychain-only credentials
 # remain in this process tree and are never written to disk.
-/usr/bin/nohup "$PYTHON_BIN" scalp_server.py --sip \
+/usr/bin/nohup /usr/bin/caffeinate -is "$PYTHON_BIN" scalp_server.py --sip \
   >>"$SERVER_LOG" 2>>"$SERVER_ERROR_LOG" < /dev/null &
 SERVER_PID=$!
 echo "Scalpr server launch requested (pid $SERVER_PID)."
