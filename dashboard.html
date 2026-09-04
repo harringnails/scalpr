@@ -246,6 +246,87 @@
     .action-stack .primary, .action-stack #checkBtn, .action-stack .secondary-actions {
       grid-column:1; grid-row:auto; }
   }
+  /* Unified cockpit restyle. Existing trade controls and handlers are unchanged. */
+  body {
+    background:
+      radial-gradient(circle at 16% -10%, rgba(38,87,112,.16), transparent 34rem),
+      linear-gradient(180deg, #090d11 0%, #0c1116 45%, #090d11 100%);
+    min-height:100vh;
+  }
+  .wrap { max-width:1180px; padding-top:30px; }
+  .trade-column { max-width:980px; }
+  .app-header { border-bottom:1px solid #1c2833; padding:0 3px 18px; }
+  .trade-column h1 { font-size:25px; letter-spacing:.06em; }
+  .status-strip { margin:14px 3px 18px; }
+  .trade-step {
+    background:linear-gradient(145deg, rgba(18,28,39,.98), rgba(12,19,27,.98));
+    border-color:#253441; border-radius:14px; box-shadow:0 14px 35px rgba(0,0,0,.18);
+  }
+  .trade-step:hover { border-color:#304455; }
+  .step-number { border-color:#3f5b70; color:var(--steel); background:#0b131b; }
+  .review-box { background:#0a1118; }
+  button.primary { box-shadow:0 0 20px rgba(61,220,132,.13); }
+  .context-zone { max-width:1080px; margin:34px auto 0; }
+  .context-frame {
+    overflow:hidden; border:1px solid #263642; border-radius:16px;
+    background:linear-gradient(145deg, rgba(17,26,35,.98), rgba(9,15,21,.98));
+    box-shadow:0 22px 55px rgba(0,0,0,.28);
+  }
+  .context-head { display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:17px 20px; border-bottom:1px solid #263642; background:rgba(9,14,19,.7); }
+  .context-title { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .context-title h2 { margin:0; color:var(--text); font-size:16px; letter-spacing:.12em; }
+  .context-shadow-label { color:var(--steel); font-size:10px; letter-spacing:.08em; }
+  .context-freshness { padding:5px 10px; border:1px solid var(--faint); border-radius:999px;
+    color:var(--dim); font-size:10px; font-weight:700; letter-spacing:.06em; white-space:nowrap; }
+  .context-freshness.clean { color:var(--green); border-color:#256b49; background:#0c281b; }
+  .context-freshness.degraded { color:var(--amber); border-color:#70521d; background:#2b200d; }
+  .context-freshness.stale { color:#ff7884; border-color:#712b34; background:#2b1015; }
+  .context-warning { margin:16px 18px 0; padding:11px 14px; border:1px solid #745a22;
+    border-radius:9px; color:#e5c673; background:#2a220f; font-size:11px; line-height:1.55; }
+  .context-warning.stale { color:#ff9ba4; border-color:#712b34; background:#2b1015; }
+  .context-grid { display:grid; grid-template-columns:.86fr 1.14fr; gap:14px; padding:18px; }
+  .context-card { border:1px solid #25333f; border-radius:12px; padding:16px;
+    background:rgba(12,19,26,.86); min-width:0; }
+  .context-card h3 { margin:0 0 13px; color:#a8b7c6; font-family:'Space Grotesk',sans-serif;
+    font-size:11px; text-transform:uppercase; letter-spacing:.11em; }
+  .context-primary { display:grid; grid-template-columns:148px 1fr; gap:18px; align-items:center; }
+  .context-gauge { width:136px; height:136px; border-radius:50%; display:grid; place-items:center;
+    background:conic-gradient(#263944 0 72%, #18222b 72% 100%); position:relative; }
+  .context-gauge::before { content:''; position:absolute; inset:10px; border-radius:50%;
+    background:#0c141b; border:1px solid #263642; }
+  .context-gauge-value { position:relative; z-index:1; text-align:center; font-family:'Space Grotesk',sans-serif; }
+  .context-gauge-value strong { display:block; font-size:36px; color:var(--dim); line-height:1; }
+  .context-gauge-value span { display:block; color:var(--faint); font-size:8px; margin-top:8px;
+    letter-spacing:.08em; text-transform:uppercase; }
+  .context-observed { color:var(--steel); font-weight:700; font-size:13px; letter-spacing:.04em; }
+  .context-disclaimer { color:var(--dim); font-size:10px; line-height:1.55; margin-top:8px; }
+  .weight-ring { width:92px; height:92px; border-radius:50%; margin:2px auto 13px;
+    background:conic-gradient(#31404b 0 100%); position:relative; }
+  .weight-ring::after { content:'PROVISIONAL'; position:absolute; inset:12px; border-radius:50%;
+    display:grid; place-items:center; text-align:center; background:#0c141b; color:var(--dim);
+    font-size:8px; line-height:1.3; }
+  .weight-list { display:grid; grid-template-columns:1fr 1fr; gap:7px 12px; color:var(--dim); font-size:10px; }
+  .weight-list span::before { content:'◇'; color:var(--steel); margin-right:6px; }
+  .context-readings { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .context-metric { padding:10px 0; border-top:1px solid #1d2a34; }
+  .context-metric:first-of-type { border-top:0; padding-top:0; }
+  .context-metric-head { display:flex; justify-content:space-between; gap:16px; align-items:baseline; }
+  .context-metric-label { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+  .context-metric-value { color:var(--text); font-weight:700; text-align:right; }
+  .context-metric-note { margin-top:4px; color:var(--faint); font-size:9px; line-height:1.45; text-align:right; }
+  .context-rule { height:2px; margin-top:8px; background:linear-gradient(90deg,#22313c,#314958,#22313c); }
+  .context-rule.clean { background:linear-gradient(90deg,#254e3a,var(--green),#254e3a); opacity:.65; }
+  .context-rule.degraded { background:linear-gradient(90deg,#4b3917,var(--amber),#4b3917); opacity:.7; }
+  .context-rule.stale { background:#53232a; }
+  .context-foot { border-top:1px solid #263642; padding:13px 18px; color:var(--faint);
+    font-size:9px; line-height:1.6; letter-spacing:.03em; }
+  @media (max-width:760px) {
+    .context-grid, .context-readings { grid-template-columns:1fr; }
+    .context-primary { grid-template-columns:1fr; justify-items:center; text-align:center; }
+    .context-readings { grid-column:auto; }
+    .context-head { align-items:flex-start; flex-direction:column; }
+  }
 </style>
 </head>
 <body>
@@ -492,6 +573,65 @@
     </form>
   </div>
   </div>
+
+  <section id="scalprContext" class="context-zone" aria-labelledby="contextTitle">
+    <div class="context-frame">
+      <header class="context-head">
+        <div class="context-title">
+          <h2 id="contextTitle">SCALPR CONTEXT</h2>
+          <span class="context-shadow-label">SHADOW · READ-ONLY</span>
+        </div>
+        <span id="contextFreshness" class="context-freshness stale">DATA: NOT YET</span>
+      </header>
+      <div id="contextWarning" class="context-warning stale">
+        STALE — DO NOT INTERPRET · — INSUFFICIENT DATA
+      </div>
+      <div class="context-grid">
+        <article class="context-card context-primary">
+          <div class="context-gauge" aria-label="Exploratory context composite is not scored">
+            <div class="context-gauge-value">
+              <strong id="contextIndex">—</strong>
+              <span>not scored</span>
+            </div>
+          </div>
+          <div>
+            <h3>Context Index</h3>
+            <div id="contextObserved" class="context-observed" data-context-value>— INSUFFICIENT DATA</div>
+            <div class="context-disclaimer">Exploratory composite · not a probability · not a signal. Formula and weights are deferred pending operator lock.</div>
+          </div>
+        </article>
+        <article class="context-card">
+          <h3>Signal Weights</h3>
+          <div class="weight-ring" aria-label="Provisional weights are unassigned"></div>
+          <div class="weight-list">
+            <span>Price structure —</span><span>Options structure —</span>
+            <span>Participation —</span><span>Cross-asset —</span>
+          </div>
+          <div class="context-disclaimer">PROVISIONAL · no scoring weight has been frozen or applied.</div>
+        </article>
+        <div class="context-readings">
+          <article class="context-card">
+            <h3>Category Breakdown</h3>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Price structure</span><span id="contextPriceValue" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div id="contextPriceNote" class="context-metric-note"></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Options structure</span><span id="contextOptionsValue" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div id="contextOptionsNote" class="context-metric-note"></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Participation proxy</span><span id="contextBreadthValue" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div id="contextBreadthNote" class="context-metric-note"></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Cross-asset</span><span id="contextCrossValue" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div id="contextCrossNote" class="context-metric-note"></div><div class="context-rule stale" data-context-rule></div></div>
+          </article>
+          <article class="context-card">
+            <h3>Indicator Readings</h3>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">SPY / VWAP</span><span id="contextVwap" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Opening range</span><span id="contextOpeningRange" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Gamma regime / flip</span><span id="contextGamma" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Put wall / Call wall</span><span id="contextWalls" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">0DTE GEX share</span><span id="contextZeroDte" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">Large-cap breadth</span><span id="contextBreadth" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+            <div class="context-metric"><div class="context-metric-head"><span class="context-metric-label">QQQ / IWM session</span><span id="contextEtfs" class="context-metric-value" data-context-value>— INSUFFICIENT DATA</span></div><div class="context-rule stale" data-context-rule></div></div>
+          </article>
+        </div>
+      </div>
+      <footer class="context-foot">OBSERVATION ONLY · EXPLORATORY / NON-INFERENTIAL · NO EXECUTION, ADMISSION, ORDER, PRE-CHECK, OR GUARD AUTHORITY · GREEN MEANS A HIGH RAW READING, NEVER “BUY.”</footer>
+    </div>
+  </section>
 
   <h2>Guarded positions</h2>
   <div class="cards" id="cards"><div class="empty">Nothing guarded yet.</div></div>
@@ -1478,6 +1618,122 @@ async function refreshMicroRead() {
   } catch (e) {}
 }
 
+const CONTEXT_SOURCE_URL = 'http://127.0.0.1:8421/latest';
+const CONTEXT_MAX_AGE_SECONDS = 120;
+
+function contextEnvelope(record, group, key) {
+  return (((record || {}).fields || {})[group] || {})[key] || {};
+}
+
+function contextRaw(record, group, key) {
+  const envelope = contextEnvelope(record, group, key);
+  return envelope.status === 'AVAILABLE' ? envelope.value : null;
+}
+
+function contextNumber(value, digits=1, suffix='') {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(digits)}${suffix}` : '— INSUFFICIENT DATA';
+}
+
+function setContextValue(id, value, note='') {
+  const element = $(id);
+  if (element) element.textContent = value == null || value === '' ? '— INSUFFICIENT DATA' : String(value);
+  const noteElement = $(`${id.replace(/Value$/, '')}Note`);
+  if (noteElement) noteElement.textContent = note;
+}
+
+function renderContextUnavailable(reason='STALE — DO NOT INTERPRET') {
+  const freshness = $('contextFreshness');
+  freshness.className = 'context-freshness stale';
+  freshness.textContent = 'DATA: STALE';
+  const warning = $('contextWarning');
+  warning.className = 'context-warning stale';
+  warning.textContent = `${reason} · — INSUFFICIENT DATA`;
+  $('contextIndex').textContent = '—';
+  document.querySelectorAll('[data-context-value]').forEach(element => {
+    element.textContent = '— INSUFFICIENT DATA';
+  });
+  document.querySelectorAll('.context-metric-note').forEach(element => { element.textContent = ''; });
+  document.querySelectorAll('[data-context-rule]').forEach(element => { element.className = 'context-rule stale'; });
+}
+
+function renderContextRecord(record) {
+  const observedAt = Date.parse(record.observed_at_utc || '');
+  const ageSeconds = Number.isFinite(observedAt) ? Math.max(0, (Date.now() - observedAt) / 1000) : Infinity;
+  const ledgerFreshness = String(record.data_freshness || 'STALE').toUpperCase();
+  if (ledgerFreshness === 'STALE' || ageSeconds > CONTEXT_MAX_AGE_SECONDS) {
+    renderContextUnavailable('STALE — DO NOT INTERPRET');
+    return;
+  }
+
+  const state = ledgerFreshness === 'CLEAN' ? 'clean' : 'degraded';
+  const freshness = $('contextFreshness');
+  freshness.className = `context-freshness ${state}`;
+  freshness.textContent = `DATA: ${ledgerFreshness} · ${Math.round(ageSeconds)}s`;
+  const warning = $('contextWarning');
+  warning.className = 'context-warning';
+  warning.textContent = 'OBSERVATION ONLY — RAW POINT-IN-TIME CONTEXT; NOT A FORECAST, TRADE SIGNAL, OR ADMISSION INPUT.';
+  document.querySelectorAll('[data-context-rule]').forEach(element => { element.className = `context-rule ${state}`; });
+
+  const vwapBps = contextRaw(record, 'spy_structure', 'vwap_distance_bps');
+  const openingRange = contextRaw(record, 'spy_structure', 'opening_range_30m_state');
+  const spyMid = contextRaw(record, 'spy_structure', 'spy_mid');
+  const gammaRegime = contextRaw(record, 'options_structure', 'gamma_regime');
+  const gammaFlip = contextRaw(record, 'options_structure', 'gamma_flip');
+  const putWall = contextRaw(record, 'options_structure', 'put_wall');
+  const callWall = contextRaw(record, 'options_structure', 'call_wall');
+  const zeroDte = contextRaw(record, 'options_structure', 'zero_dte_gex_share_pct');
+  const breadth = contextRaw(record, 'largecap_breadth', 'largecap_breadth_proxy');
+  const breadthCount = contextRaw(record, 'largecap_breadth', 'proxy_constituent_count');
+  const qqq = contextRaw(record, 'cross_asset', 'qqq_session_return_pct');
+  const iwm = contextRaw(record, 'cross_asset', 'iwm_session_return_pct');
+
+  let observed = 'OBSERVED MOVE: — INSUFFICIENT DATA';
+  if (Number.isFinite(Number(vwapBps))) {
+    observed = Number(vwapBps) > 0 ? 'OBSERVED ABOVE VWAP' : Number(vwapBps) < 0 ? 'OBSERVED BELOW VWAP' : 'OBSERVED AT VWAP';
+  }
+  $('contextObserved').textContent = observed;
+  $('contextIndex').textContent = '—';
+
+  const signed = value => {
+    const number = Number(value);
+    return Number.isFinite(number) ? `${number >= 0 ? '+' : ''}${number.toFixed(1)}` : null;
+  };
+  const priceValue = Number.isFinite(Number(vwapBps)) ? `${signed(vwapBps)} bps vs VWAP` : null;
+  setContextValue('contextPriceValue', priceValue, `SPY ${contextNumber(spyMid, 2)} · opening range ${openingRange || '—'}`);
+  setContextValue('contextOptionsValue', gammaRegime ? `${String(gammaRegime).toUpperCase()} GAMMA` : null,
+    `flip ${contextNumber(gammaFlip, 2)} · walls ${contextNumber(putWall, 2)} / ${contextNumber(callWall, 2)}`);
+  setContextValue('contextBreadthValue', Number.isFinite(Number(breadth)) ? `${(Number(breadth) * 100).toFixed(0)}% advancing` : null,
+    `${breadthCount || '—'} of fixed 10-name proxy observed`);
+  const crossValue = Number.isFinite(Number(qqq)) && Number.isFinite(Number(iwm))
+    ? `QQQ ${signed(qqq)}% · IWM ${signed(iwm)}%` : null;
+  setContextValue('contextCrossValue', crossValue, 'Session returns · observed, not predictive');
+
+  setContextValue('contextVwap', priceValue);
+  setContextValue('contextOpeningRange', openingRange ? String(openingRange).toUpperCase() : null);
+  setContextValue('contextGamma', gammaRegime ? `${String(gammaRegime).toUpperCase()} · ${contextNumber(gammaFlip, 2)}` : null);
+  setContextValue('contextWalls', Number.isFinite(Number(putWall)) && Number.isFinite(Number(callWall))
+    ? `${Number(putWall).toFixed(2)} / ${Number(callWall).toFixed(2)}` : null);
+  setContextValue('contextZeroDte', Number.isFinite(Number(zeroDte)) ? contextNumber(zeroDte, 1, '%') : null);
+  setContextValue('contextBreadth', Number.isFinite(Number(breadth)) ? `${(Number(breadth) * 100).toFixed(0)}% · n=${breadthCount || '—'}` : null);
+  setContextValue('contextEtfs', crossValue);
+}
+
+async function refreshContextPanel() {
+  try {
+    const response = await fetch(CONTEXT_SOURCE_URL, {cache:'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.ledger_status !== 'AVAILABLE' || !payload.record) {
+      renderContextUnavailable('STALE — DO NOT INTERPRET');
+      return;
+    }
+    renderContextRecord(payload.record);
+  } catch (error) {
+    renderContextUnavailable('STALE — DO NOT INTERPRET');
+  }
+}
+
 function setBanner(id, level, lvlText, reason) {
   const b = $(id); if (!b) return;
   b.className = 'banner ' + level;
@@ -1648,7 +1904,7 @@ async function refreshExploSummary() {
 }
 
 renderMarketSign(null);
-refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
+refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshContextPanel(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
 if (location.protocol === 'file:') {
   showMsg('This page is opened as a file — the API cannot work this way. Run "python scalp_server.py" and open http://localhost:8420 instead.', true);
 } else {
@@ -1672,6 +1928,7 @@ scheduleRefresh(refreshJournal, 10000);
 scheduleRefresh(refreshHoldings, 3000);
 scheduleRefresh(refreshStats, 10000);
 scheduleRefresh(refreshMicroRead, 15000);
+scheduleRefresh(refreshContextPanel, 30000);
 scheduleRefresh(refreshBanners, 60000);   // premarket is cached ~60s server-side
 scheduleRefresh(refreshEntryRead, 15000); // minute-bar driven; caught within ~15s
 scheduleRefresh(refreshDirectionalShadow, 15000);
