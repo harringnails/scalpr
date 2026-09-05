@@ -354,11 +354,35 @@
   .context-rule.stale { background:#53232a; }
   .context-foot { border-top:1px solid #263642; padding:13px 18px; color:var(--faint);
     font-size:9px; line-height:1.6; letter-spacing:.03em; }
+  .structure-zone { max-width:1080px; margin:18px auto 0; }
+  .structure-frame { border:1px solid #263642; border-radius:16px; overflow:hidden;
+    background:linear-gradient(145deg,rgba(17,26,35,.98),rgba(9,15,21,.98)); box-shadow:0 22px 55px rgba(0,0,0,.24); }
+  .structure-head { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:15px 18px;
+    border-bottom:1px solid #263642; background:rgba(9,14,19,.72); flex-wrap:wrap; }
+  .structure-title { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .structure-title h2 { margin:0; font-size:15px; letter-spacing:.1em; }
+  .structure-tabs,.structure-timeframes { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .structure-tabs button,.structure-timeframes button { padding:5px 11px; border-radius:7px; font-size:10px; font-weight:700;
+    border-color:#2a3b48; color:var(--dim); background:#0c141b; }
+  .structure-tabs button.active,.structure-timeframes button.active { color:#071a20; background:var(--steel); border-color:var(--steel); }
+  .structure-body { position:relative; padding:13px 14px 8px; transition:filter .2s,opacity .2s; }
+  .structure-body.stale { filter:grayscale(1); opacity:.38; pointer-events:none; }
+  .structure-readout { display:flex; gap:19px; flex-wrap:wrap; padding:0 6px 8px; }
+  .structure-stat span { display:block; color:var(--faint); font-size:8px; letter-spacing:.08em; text-transform:uppercase; }
+  .structure-stat strong { display:block; color:var(--text); font-size:13px; margin-top:2px; }
+  #marketStructureChart { width:100%; height:350px; min-height:280px; }
+  .structure-state { margin:13px 16px 0; padding:10px 13px; border:1px solid #344653; border-radius:8px;
+    color:#91a2b2; background:#101922; font-size:10px; }
+  .structure-state.stale { color:#ff9ba4; border-color:#712b34; background:#2b1015; }
+  .structure-state.live { color:var(--green); border-color:#256b49; background:#0c281b; }
+  .structure-foot { padding:11px 17px; border-top:1px solid #263642; color:var(--faint); font-size:8px;
+    line-height:1.55; letter-spacing:.035em; text-transform:uppercase; }
   @media (max-width:760px) {
     .context-grid, .context-readings { grid-template-columns:1fr; }
     .context-primary { grid-template-columns:1fr; justify-items:center; text-align:center; }
     .context-readings { grid-column:auto; }
     .context-head { align-items:flex-start; flex-direction:column; }
+    #marketStructureChart { height:300px; }
   }
 </style>
 </head>
@@ -696,6 +720,40 @@
     </div>
   </section>
 
+  <section id="marketStructurePanel" class="structure-zone" aria-labelledby="marketStructureTitle">
+    <div class="structure-frame">
+      <header class="structure-head">
+        <div class="structure-title"><h2 id="marketStructureTitle">SCALPR MARKET STRUCTURE</h2><span class="context-shadow-label">SHADOW · READ-ONLY</span></div>
+        <div id="structureFreshness" class="context-freshness">NOT STARTED</div>
+      </header>
+      <div class="structure-head">
+        <div class="structure-tabs" aria-label="Watched instrument">
+          <button type="button" class="active" data-structure-symbol="SPY" onclick="setStructureSymbol('SPY')">SPY</button>
+          <button type="button" data-structure-symbol="QQQ" onclick="setStructureSymbol('QQQ')">QQQ</button>
+          <button type="button" data-structure-symbol="IWM" onclick="setStructureSymbol('IWM')">IWM</button>
+          <button type="button" data-structure-symbol="DIA" onclick="setStructureSymbol('DIA')">DIA</button>
+        </div>
+        <div class="structure-timeframes" aria-label="Candle timeframe">
+          <button type="button" class="active" data-structure-timeframe="1m" onclick="setStructureTimeframe('1m')">1m</button>
+          <button type="button" data-structure-timeframe="5m" onclick="setStructureTimeframe('5m')">5m</button>
+        </div>
+      </div>
+      <div id="structureState" class="structure-state">MARKET STRUCTURE CAPTURE NOT RUNNING — start the read-only bridge to populate</div>
+      <div id="structureBody" class="structure-body stale">
+        <div class="structure-readout">
+          <div class="structure-stat"><span>Spot</span><strong id="structureSpot">—</strong></div>
+          <div class="structure-stat"><span>Gamma flip</span><strong id="structureFlip">—</strong></div>
+          <div class="structure-stat"><span>Call wall</span><strong id="structureCallWall">—</strong></div>
+          <div class="structure-stat"><span>Put wall</span><strong id="structurePutWall">—</strong></div>
+          <div class="structure-stat"><span>Regime</span><strong id="structureRegime">—</strong></div>
+          <div class="structure-stat"><span>Episodes</span><strong id="structureEpisodeCount">0</strong></div>
+        </div>
+        <div id="marketStructureChart" role="img" aria-label="Read-only candlestick market structure chart"></div>
+      </div>
+      <footer class="structure-foot">shadow · non-inferential · candles are Alpaca trade OHLC (display), study basis is quote-mid · no execution/admission/Guard authority · episode markers are anchors, not signals</footer>
+    </div>
+  </section>
+
   <h2>Guarded positions</h2>
   <div class="cards" id="cards"><div class="empty">Nothing guarded yet.</div></div>
 
@@ -737,6 +795,7 @@
   the rule but fill at the next available price — fast markets can slip. Not investment advice.</p>
 </div>
 
+<script src="http://127.0.0.1:8423/static/echarts.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let lastPrecheckSnapshot = null;
@@ -2044,6 +2103,131 @@ async function refreshContextPanel() {
   }
 }
 
+const MARKET_STRUCTURE_SOURCE_URL = 'http://127.0.0.1:8423/chart';
+let structureSymbol = 'SPY';
+let structureTimeframe = '1m';
+let structureChart = null;
+
+function setStructureSymbol(symbol) {
+  structureSymbol = symbol;
+  document.querySelectorAll('[data-structure-symbol]').forEach(button =>
+    button.classList.toggle('active', button.dataset.structureSymbol === symbol));
+  refreshMarketStructure();
+}
+
+function setStructureTimeframe(timeframe) {
+  structureTimeframe = timeframe;
+  document.querySelectorAll('[data-structure-timeframe]').forEach(button =>
+    button.classList.toggle('active', button.dataset.structureTimeframe === timeframe));
+  refreshMarketStructure();
+}
+
+function renderStructureState(state, text) {
+  const body = $('structureBody');
+  const badge = $('structureFreshness');
+  const message = $('structureState');
+  body.classList.toggle('stale', state !== 'LIVE');
+  badge.className = `context-freshness ${state === 'LIVE' ? 'clean' : state === 'STALE' ? 'stale' : ''}`;
+  message.className = `structure-state ${state === 'LIVE' ? 'live' : state === 'STALE' ? 'stale' : ''}`;
+  badge.textContent = state === 'LIVE' ? 'LIVE · FRESH' : state;
+  message.textContent = text || '';
+  message.hidden = !text;
+}
+
+function structureNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(2) : '—';
+}
+
+function nearestCandleMarker(marker, candles) {
+  const target = Date.parse(marker.anchor_t0_utc);
+  if (!Number.isFinite(target) || !candles.length) return null;
+  let nearest = 0;
+  let distance = Infinity;
+  candles.forEach((candle, index) => {
+    const candidate = Math.abs(Date.parse(candle.ts) - target);
+    if (candidate < distance) { nearest = index; distance = candidate; }
+  });
+  const limit = structureTimeframe === '5m' ? 300000 : 60000;
+  if (distance > limit) return null;
+  return {
+    value: [nearest, Number(candles[nearest].low)],
+    name: `${marker.arm || 'episode'} t0`,
+    itemStyle: {color:'#f5b942'},
+    label: {show:true, formatter:'t0', color:'#f5b942', position:'bottom'}
+  };
+}
+
+function renderMarketStructure(payload) {
+  const candles = Array.isArray(payload.candles) ? payload.candles : [];
+  const structure = payload.structure || {};
+  const markers = Array.isArray(payload.markers) ? payload.markers : [];
+  $('structureSpot').textContent = structureNumber(structure.spot);
+  $('structureFlip').textContent = structureNumber(structure.gamma_flip);
+  $('structureCallWall').textContent = structureNumber(structure.call_wall);
+  $('structurePutWall').textContent = structureNumber(structure.put_wall);
+  $('structureRegime').textContent = structure.gamma_regime ? String(structure.gamma_regime).toUpperCase() : '—';
+  $('structureEpisodeCount').textContent = String(markers.length);
+
+  if (payload.status === 'NOT_STARTED') {
+    renderStructureState('NOT STARTED', 'MARKET STRUCTURE CAPTURE NOT RUNNING — start the read-only bridge to populate');
+    if (structureChart) structureChart.clear();
+    return;
+  }
+  if (payload.status !== 'LIVE') {
+    renderStructureState('STALE', 'STALE — DO NOT INTERPRET · candle or structure feed is cold/missing');
+  } else {
+    renderStructureState('LIVE', '');
+  }
+  if (!window.echarts || !candles.length) {
+    if (structureChart) structureChart.clear();
+    return;
+  }
+  if (!structureChart) structureChart = echarts.init($('marketStructureChart'), null, {renderer:'canvas'});
+
+  const labels = candles.map(candle => new Date(candle.ts).toLocaleTimeString('en-US', {
+    timeZone:'America/New_York', hour:'2-digit', minute:'2-digit', hour12:false
+  }));
+  const values = candles.map(candle => [candle.open, candle.close, candle.low, candle.high]);
+  const lineData = [
+    {name:'Call wall', yAxis:Number(structure.call_wall), lineStyle:{color:'#ff626d', width:1.5}},
+    {name:'Put wall', yAxis:Number(structure.put_wall), lineStyle:{color:'#48d49b', width:1.5}},
+    {name:'Gamma flip', yAxis:Number(structure.gamma_flip), lineStyle:{color:'#f5b942', type:'dashed', width:1.5}},
+    {name:'Spot', yAxis:Number(structure.spot), lineStyle:{color:'#8ed5ff', type:'dotted', width:1.5}}
+  ].filter(line => Number.isFinite(line.yAxis));
+  const pocket = Number.isFinite(Number(structure.put_wall)) && Number.isFinite(Number(structure.call_wall))
+    ? [[{name:'pin pocket', yAxis:Number(structure.put_wall)}, {yAxis:Number(structure.call_wall)}]] : [];
+  const markerData = markers.map(marker => nearestCandleMarker(marker, candles)).filter(Boolean);
+  structureChart.setOption({
+    animationDurationUpdate: 250,
+    backgroundColor:'transparent',
+    grid:{left:58,right:72,top:26,bottom:62},
+    tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
+    xAxis:{type:'category',data:labels,boundaryGap:true,axisLine:{lineStyle:{color:'#314352'}},axisLabel:{color:'#8294a4'}},
+    yAxis:{scale:true,position:'right',axisLine:{show:true,lineStyle:{color:'#314352'}},splitLine:{lineStyle:{color:'#1b2934'}},axisLabel:{color:'#8294a4'}},
+    dataZoom:[{type:'inside',start:55,end:100},{type:'slider',height:18,bottom:12,start:55,end:100,borderColor:'#263947',fillerColor:'rgba(61,213,152,.12)'}],
+    series:[
+      {name:`${structureSymbol} ${structureTimeframe}`,type:'candlestick',data:values,
+       itemStyle:{color:'#38d899',color0:'#ff5d68',borderColor:'#38d899',borderColor0:'#ff5d68'},
+       markLine:{symbol:'none',silent:true,label:{color:'#b9c7d2',formatter:'{b}'},data:lineData},
+       markArea:{silent:true,itemStyle:{color:'rgba(245,185,66,.07)'},label:{show:false},data:pocket}},
+      {name:'Accrued episode t0',type:'scatter',symbol:'triangle',symbolSize:12,data:markerData,z:5}
+    ]
+  }, true);
+}
+
+async function refreshMarketStructure() {
+  try {
+    const url = `${MARKET_STRUCTURE_SOURCE_URL}?symbol=${encodeURIComponent(structureSymbol)}&timeframe=${encodeURIComponent(structureTimeframe)}`;
+    const response = await fetch(url, {cache:'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderMarketStructure(await response.json());
+  } catch (error) {
+    renderStructureState('NOT STARTED', 'MARKET STRUCTURE CAPTURE NOT RUNNING — start the read-only bridge to populate');
+    if (structureChart) structureChart.clear();
+  }
+}
+
 function setBanner(id, level, lvlText, reason) {
   const b = $(id); if (!b) return;
   b.className = 'banner ' + level;
@@ -2215,7 +2399,7 @@ async function refreshExploSummary() {
 
 initContextAlerts();
 renderMarketSign(null);
-refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshContextPanel(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
+refresh(); refreshMarketSign(); refreshJournal(); refreshHoldings(); refreshStats(); refreshMicroRead(); refreshContextPanel(); refreshMarketStructure(); refreshBanners(); refreshEntryRead(); refreshDirectionalShadow(); refreshExplanation(); refreshExploSummary();
 if (location.protocol === 'file:') {
   showMsg('This page is opened as a file — the API cannot work this way. Run "python scalp_server.py" and open http://localhost:8420 instead.', true);
 } else {
@@ -2245,12 +2429,14 @@ scheduleRefresh(refreshHoldings, 2000);
 scheduleRefresh(refreshStats, 10000);
 scheduleRefresh(refreshMicroRead, 15000);
 scheduleRefresh(refreshContextPanel, 5000);
+scheduleRefresh(refreshMarketStructure, 15000);
 scheduleRefresh(updateContextAgeLabel, 1000);
 scheduleRefresh(refreshBanners, 60000);   // premarket is cached ~60s server-side
 scheduleRefresh(refreshEntryRead, 15000); // minute-bar driven; caught within ~15s
 scheduleRefresh(refreshDirectionalShadow, 15000);
 scheduleRefresh(refreshExplanation, 15000);
 scheduleRefresh(refreshExploSummary, 60000);
+window.addEventListener('resize', () => { if (structureChart) structureChart.resize(); });
 </script>
 </body>
 </html>
