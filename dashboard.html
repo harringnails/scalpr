@@ -369,7 +369,12 @@
   .structure-body.stale { filter:grayscale(1); opacity:.38; pointer-events:none; }
   .structure-readout { display:flex; gap:19px; flex-wrap:wrap; padding:0 6px 8px; }
   .structure-stat span { display:block; color:var(--faint); font-size:8px; letter-spacing:.08em; text-transform:uppercase; }
-  .structure-stat strong { display:block; color:var(--text); font-size:13px; margin-top:2px; }
+  .structure-stat strong { display:block; color:var(--text); font-size:13px; margin-top:2px;
+    font-variant-numeric:tabular-nums; }
+  .structure-tick-up { animation:structureTickUp .5s ease-out; }
+  .structure-tick-down { animation:structureTickDown .5s ease-out; }
+  @keyframes structureTickUp { from { color:var(--green); text-shadow:0 0 14px var(--green); } to { color:var(--text); text-shadow:none; } }
+  @keyframes structureTickDown { from { color:var(--blade); text-shadow:0 0 14px var(--blade); } to { color:var(--text); text-shadow:none; } }
   #marketStructureChart { width:100%; height:350px; min-height:280px; }
   .structure-state { margin:13px 16px 0; padding:10px 13px; border:1px solid #344653; border-radius:8px;
     color:#91a2b2; background:#101922; font-size:10px; }
@@ -2107,6 +2112,11 @@ const MARKET_STRUCTURE_SOURCE_URL = 'http://127.0.0.1:8423/chart';
 let structureSymbol = 'SPY';
 let structureTimeframe = '1m';
 let structureChart = null;
+let structureFeedClean = false;
+let structureReticleVisible = false;
+let structureReticleBound = false;
+let lastStructurePayload = null;
+const structurePreviousSpots = {};
 
 function setStructureSymbol(symbol) {
   structureSymbol = symbol;
@@ -2132,11 +2142,95 @@ function renderStructureState(state, text) {
   badge.textContent = state === 'LIVE' ? 'LIVE · FRESH' : state;
   message.textContent = text || '';
   message.hidden = !text;
+  structureFeedClean = state === 'LIVE';
+  if (!structureFeedClean) {
+    delete structurePreviousSpots[structureSymbol];
+    hideStructureReticle();
+    $('structureSpot').classList.remove('structure-tick-up', 'structure-tick-down');
+  }
 }
 
 function structureNumber(value) {
+  if (value == null) return '—';
   const number = Number(value);
   return Number.isFinite(number) ? number.toFixed(2) : '—';
+}
+
+function structureValue(value) {
+  return value == null ? Number.NaN : Number(value);
+}
+
+function wallGlowIntensity(spot, wall, fadeDistance = 2) {
+  if (spot == null || wall == null) return 0;
+  const distance = Math.abs(Number(spot) - Number(wall));
+  const fade = Number(fadeDistance);
+  if (!Number.isFinite(distance) || !Number.isFinite(fade) || fade <= 0) return 0;
+  return Math.max(0, Math.min(1, 1 - distance / fade));
+}
+
+function structureTickDirection(previous, next, isClean) {
+  const before = Number(previous);
+  const after = Number(next);
+  if (!isClean || previous == null || next == null || !Number.isFinite(before) || !Number.isFinite(after) || before === after) return null;
+  return after > before ? 'up' : 'down';
+}
+
+function updateStructureSpot(value, isClean) {
+  const element = $('structureSpot');
+  const next = Number(value);
+  const previous = structurePreviousSpots[structureSymbol];
+  const direction = structureTickDirection(previous, next, isClean);
+  element.classList.remove('structure-tick-up', 'structure-tick-down');
+  element.textContent = structureNumber(value);
+  if (!isClean || value == null || !Number.isFinite(next)) {
+    delete structurePreviousSpots[structureSymbol];
+    return;
+  }
+  structurePreviousSpots[structureSymbol] = next;
+  if (!direction) return;
+  void element.offsetWidth;
+  element.classList.add(direction === 'up' ? 'structure-tick-up' : 'structure-tick-down');
+}
+
+function structureCornerGraphics(chart, visible) {
+  const left = 58, top = 26, right = Math.max(left, chart.getWidth() - 72);
+  const bottom = Math.max(top, chart.getHeight() - 62), length = 15;
+  const segments = [
+    [left, top + length, left, top], [left, top, left + length, top],
+    [right - length, top, right, top], [right, top, right, top + length],
+    [left, bottom - length, left, bottom], [left, bottom, left + length, bottom],
+    [right - length, bottom, right, bottom], [right, bottom - length, right, bottom]
+  ];
+  return segments.map((shape, index) => ({
+    id:`structure-corner-${index}`, type:'line', silent:true, invisible:!visible, z:100,
+    shape:{x1:shape[0], y1:shape[1], x2:shape[2], y2:shape[3]},
+    style:{stroke:'#41d3f0', lineWidth:1.2, opacity:.5, shadowBlur:5, shadowColor:'rgba(65,211,240,.35)'}
+  }));
+}
+
+function setStructureReticleVisible(visible) {
+  const next = Boolean(visible && structureFeedClean && structureChart);
+  if (!structureChart || next === structureReticleVisible) return;
+  structureReticleVisible = next;
+  structureChart.setOption({graphic:structureCornerGraphics(structureChart, next)});
+}
+
+function hideStructureReticle() {
+  if (!structureChart) return;
+  setStructureReticleVisible(false);
+  structureChart.dispatchAction({type:'hideTip'});
+  structureChart.dispatchAction({type:'updateAxisPointer', currTrigger:'leave'});
+}
+
+function bindStructureReticle() {
+  if (!structureChart || structureReticleBound) return;
+  structureReticleBound = true;
+  structureChart.getZr().on('mousemove', event => {
+    const width = structureChart.getWidth(), height = structureChart.getHeight();
+    const inside = event.offsetX >= 58 && event.offsetX <= width - 72 && event.offsetY >= 26 && event.offsetY <= height - 62;
+    setStructureReticleVisible(inside);
+  });
+  structureChart.getZr().on('globalout', hideStructureReticle);
 }
 
 function nearestCandleMarker(marker, candles) {
@@ -2159,10 +2253,12 @@ function nearestCandleMarker(marker, candles) {
 }
 
 function renderMarketStructure(payload) {
+  lastStructurePayload = payload;
   const candles = Array.isArray(payload.candles) ? payload.candles : [];
   const structure = payload.structure || {};
   const markers = Array.isArray(payload.markers) ? payload.markers : [];
-  $('structureSpot').textContent = structureNumber(structure.spot);
+  const isClean = payload.status === 'LIVE';
+  updateStructureSpot(structure.spot, isClean);
   $('structureFlip').textContent = structureNumber(structure.gamma_flip);
   $('structureCallWall').textContent = structureNumber(structure.call_wall);
   $('structurePutWall').textContent = structureNumber(structure.put_wall);
@@ -2184,27 +2280,37 @@ function renderMarketStructure(payload) {
     return;
   }
   if (!structureChart) structureChart = echarts.init($('marketStructureChart'), null, {renderer:'canvas'});
+  bindStructureReticle();
 
   const labels = candles.map(candle => new Date(candle.ts).toLocaleTimeString('en-US', {
     timeZone:'America/New_York', hour:'2-digit', minute:'2-digit', hour12:false
   }));
   const values = candles.map(candle => [candle.open, candle.close, candle.low, candle.high]);
+  const callGlow = isClean ? wallGlowIntensity(structure.spot, structure.call_wall) : 0;
+  const putGlow = isClean ? wallGlowIntensity(structure.spot, structure.put_wall) : 0;
   const lineData = [
-    {name:'Call wall', yAxis:Number(structure.call_wall), lineStyle:{color:'#ff626d', width:1.5}},
-    {name:'Put wall', yAxis:Number(structure.put_wall), lineStyle:{color:'#48d49b', width:1.5}},
-    {name:'Gamma flip', yAxis:Number(structure.gamma_flip), lineStyle:{color:'#f5b942', type:'dashed', width:1.5}},
-    {name:'Spot', yAxis:Number(structure.spot), lineStyle:{color:'#8ed5ff', type:'dotted', width:1.5}}
+    {name:'Call wall', yAxis:structureValue(structure.call_wall), lineStyle:{color:'#ff626d', width:1.5 + callGlow,
+      shadowBlur:18 * callGlow, shadowColor:'rgba(255,98,109,.9)'}},
+    {name:'Put wall', yAxis:structureValue(structure.put_wall), lineStyle:{color:'#48d49b', width:1.5 + putGlow,
+      shadowBlur:18 * putGlow, shadowColor:'rgba(72,212,155,.9)'}},
+    {name:'Gamma flip', yAxis:structureValue(structure.gamma_flip), lineStyle:{color:'#f5b942', type:'dashed', width:1.5}},
+    {name:'Spot', yAxis:structureValue(structure.spot), lineStyle:{color:'#8ed5ff', type:'dotted', width:1.5}}
   ].filter(line => Number.isFinite(line.yAxis));
-  const pocket = Number.isFinite(Number(structure.put_wall)) && Number.isFinite(Number(structure.call_wall))
-    ? [[{name:'pin pocket', yAxis:Number(structure.put_wall)}, {yAxis:Number(structure.call_wall)}]] : [];
+  const pocket = Number.isFinite(structureValue(structure.put_wall)) && Number.isFinite(structureValue(structure.call_wall))
+    ? [[{name:'pin pocket', yAxis:structureValue(structure.put_wall)}, {yAxis:structureValue(structure.call_wall)}]] : [];
   const markerData = markers.map(marker => nearestCandleMarker(marker, candles)).filter(Boolean);
   structureChart.setOption({
     animationDurationUpdate: 250,
     backgroundColor:'transparent',
     grid:{left:58,right:72,top:26,bottom:62},
-    tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
-    xAxis:{type:'category',data:labels,boundaryGap:true,axisLine:{lineStyle:{color:'#314352'}},axisLabel:{color:'#8294a4'}},
-    yAxis:{scale:true,position:'right',axisLine:{show:true,lineStyle:{color:'#314352'}},splitLine:{lineStyle:{color:'#1b2934'}},axisLabel:{color:'#8294a4'}},
+    tooltip:{show:isClean,trigger:'axis',triggerOn:isClean?'mousemove|click':'none',axisPointer:{type:'cross',
+      lineStyle:{color:'#41d3f0',width:.8,type:'dashed'},crossStyle:{color:'#41d3f0',width:.8,type:'dashed'},
+      label:{show:isClean,color:'#dffaff',backgroundColor:'#123642',borderColor:'#41d3f0',borderWidth:1}}},
+    xAxis:{type:'category',data:labels,boundaryGap:true,axisLine:{lineStyle:{color:'#314352'}},axisLabel:{color:'#8294a4'},
+      axisPointer:{show:isClean,label:{show:isClean,color:'#dffaff',backgroundColor:'#123642'},lineStyle:{color:'#41d3f0',type:'dashed',width:.8}}},
+    yAxis:{scale:true,position:'right',axisLine:{show:true,lineStyle:{color:'#314352'}},splitLine:{lineStyle:{color:'#1b2934'}},axisLabel:{color:'#8294a4'},
+      axisPointer:{show:isClean,label:{show:isClean,precision:2,color:'#dffaff',backgroundColor:'#123642'},lineStyle:{color:'#41d3f0',type:'dashed',width:.8}}},
+    graphic:structureCornerGraphics(structureChart, false),
     dataZoom:[{type:'inside',start:55,end:100},{type:'slider',height:18,bottom:12,start:55,end:100,borderColor:'#263947',fillerColor:'rgba(61,213,152,.12)'}],
     series:[
       {name:`${structureSymbol} ${structureTimeframe}`,type:'candlestick',data:values,
@@ -2214,6 +2320,8 @@ function renderMarketStructure(payload) {
       {name:'Accrued episode t0',type:'scatter',symbol:'triangle',symbolSize:12,data:markerData,z:5}
     ]
   }, true);
+  structureReticleVisible = false;
+  if (!isClean) hideStructureReticle();
 }
 
 async function refreshMarketStructure() {
@@ -2436,7 +2544,11 @@ scheduleRefresh(refreshEntryRead, 15000); // minute-bar driven; caught within ~1
 scheduleRefresh(refreshDirectionalShadow, 15000);
 scheduleRefresh(refreshExplanation, 15000);
 scheduleRefresh(refreshExploSummary, 60000);
-window.addEventListener('resize', () => { if (structureChart) structureChart.resize(); });
+window.addEventListener('resize', () => {
+  if (!structureChart) return;
+  structureChart.resize();
+  if (lastStructurePayload) renderMarketStructure(lastStructurePayload);
+});
 </script>
 </body>
 </html>

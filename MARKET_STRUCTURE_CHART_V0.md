@@ -31,6 +31,15 @@ and labeled `STALE — DO NOT INTERPRET`. With no candles and no structure recor
 the panel shows the calm not-running state. Missing episode ledgers produce zero
 markers rather than synthetic placeholders.
 
+## Cosmetic FX
+
+On a `LIVE` read only, the native ECharts cross-axis pointer displays time and
+price, cyan corner brackets frame the plot while hovered, wall-line glow scales
+with spot proximity, and an actual spot change flashes green or red for 0.5
+seconds. These effects use the existing chart refresh and values. They make no
+network request and produce no derived study or decision input. Every effect is
+suppressed when the read is stale or not started.
+
 ## Operator Launch
 
 After the branch is deployed, start the read-only bridge separately. This does
