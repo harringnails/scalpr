@@ -5,8 +5,16 @@ import errno
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import collector_liveness_alert as alert
+
+
+ET = ZoneInfo("America/New_York")
+
+
+def _et_timestamp(year, month, day, hour, minute):
+    return datetime(year, month, day, hour, minute, tzinfo=ET).timestamp()
 
 
 def _write_status(path: Path, *, state: str, market_window: bool, updated_at: float) -> None:
@@ -80,6 +88,65 @@ def test_market_closed_stale_heartbeat_alerts(tmp_path):
     result = alert.evaluate_alert(status_path=status, decision_paths=(), now=now)
     assert result["alert"] is True
     assert result["kind"] == "collector_heartbeat_stale"
+
+
+def test_benign_closed_staleness_logs_without_notification(tmp_path, monkeypatch):
+    now = _et_timestamp(2026, 9, 1, 20, 0)
+    status = tmp_path / "status.json"
+    alert_log = tmp_path / "alerts.log"
+    state_path = tmp_path / "state.json"
+    _write_status(status, state="ARMED_MARKET_CLOSED", market_window=False, updated_at=now - 301)
+    notifications = []
+    monkeypatch.setattr(alert, "_notify", lambda *args: notifications.append(args))
+
+    result = alert.run_once(status_path=status, decision_paths=(), alert_log_path=alert_log,
+                            state_path=state_path, now=now)
+
+    assert result["event"] == "ALERT"
+    assert result["notified"] is False
+    assert result["notification_required"] is False
+    assert notifications == []
+    assert json.loads(alert_log.read_text())["kind"] == "collector_heartbeat_stale"
+
+
+def test_rth_staleness_still_notifies(tmp_path, monkeypatch):
+    now = _et_timestamp(2026, 9, 1, 10, 0)
+    status = tmp_path / "status.json"
+    alert_log = tmp_path / "alerts.log"
+    state_path = tmp_path / "state.json"
+    decisions = _make_decision_files(tmp_path, mtime=now - 301)
+    _write_status(status, state="ACTIVE_RTH_CAPTURE", market_window=True, updated_at=now)
+    notifications = []
+    monkeypatch.setattr(alert, "_notify", lambda *args: notifications.append(args))
+
+    result = alert.run_once(status_path=status, decision_paths=decisions, alert_log_path=alert_log,
+                            state_path=state_path, now=now)
+
+    assert result["kind"] == "rth_no_production"
+    assert result["notified"] is True
+    assert len(notifications) == 1
+
+
+def test_preopen_staleness_pages_after_log_only_incident(tmp_path, monkeypatch):
+    before_warmup = _et_timestamp(2026, 9, 1, 8, 59)
+    preopen = _et_timestamp(2026, 9, 1, 9, 0)
+    status = tmp_path / "status.json"
+    alert_log = tmp_path / "alerts.log"
+    state_path = tmp_path / "state.json"
+    notifications = []
+    monkeypatch.setattr(alert, "_notify", lambda *args: notifications.append(args))
+    _write_status(status, state="ARMED_MARKET_CLOSED", market_window=False,
+                  updated_at=before_warmup - 301)
+
+    first = alert.run_once(status_path=status, decision_paths=(), alert_log_path=alert_log,
+                           state_path=state_path, now=before_warmup)
+    second = alert.run_once(status_path=status, decision_paths=(), alert_log_path=alert_log,
+                            state_path=state_path, now=preopen)
+
+    assert first["notified"] is False
+    assert second["event"] == "ALERT"
+    assert second["notified"] is True
+    assert len(notifications) == 1
 
 
 def test_missing_status_alerts(tmp_path):

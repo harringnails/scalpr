@@ -15,6 +15,7 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parent
@@ -33,6 +34,8 @@ DEDUP_ALERT_SECONDS = 900
 STATE_READ_RETRIES = 3
 STATE_READ_RETRY_SECONDS = 0.05
 TRANSIENT_READ_ERRNOS = {errno.EAGAIN, errno.EDEADLK}
+PREOPEN_WARMUP_MINUTES = 30
+NEW_YORK = ZoneInfo("America/New_York")
 
 
 def utc_now() -> datetime:
@@ -218,6 +221,25 @@ def _transition_kind(previous: str | None, current: str) -> str | None:
     return None
 
 
+def _in_preopen_or_rth(now: float) -> bool:
+    now_et = datetime.fromtimestamp(now, tz=timezone.utc).astimezone(NEW_YORK)
+    if now_et.weekday() >= 5:
+        return False
+    minute = now_et.hour * 60 + now_et.minute
+    return 9 * 60 <= minute < 16 * 60
+
+
+def _should_notify(observation: dict[str, object], *, now: float) -> bool:
+    if not observation["alert"]:
+        return False
+    benign_closed_stale = (
+        observation["kind"] == "collector_heartbeat_stale"
+        and observation["state"] == "ARMED_MARKET_CLOSED"
+        and observation["market_window"] is False
+    )
+    return not benign_closed_stale or _in_preopen_or_rth(now)
+
+
 def run_once(
     *,
     status_path: Path = STATUS_PATH,
@@ -227,19 +249,25 @@ def run_once(
     now: float | None = None,
     notify: bool = True,
 ) -> dict[str, object]:
-    observation = evaluate_alert(status_path=status_path, decision_paths=decision_paths, now=now)
+    current_now = time.time() if now is None else float(now)
+    observation = evaluate_alert(status_path=status_path, decision_paths=decision_paths, now=current_now)
     prior = _load_state(state_path)
     previous_kind = prior.get("current_kind") if isinstance(prior, dict) else None
     transition = _transition_kind(str(previous_kind) if previous_kind is not None else None, str(observation["kind"]))
     alerting = bool(observation["alert"])
+    notification_required = _should_notify(observation, now=current_now)
+    incident_notified = bool(prior.get("incident_notified", False))
+    if not incident_notified and prior.get("last_event") == "ALERT" and prior.get("last_notify_at") is not None:
+        incident_notified = True
     event = None
 
     if transition == "ALERT" or transition == "RECOVERED":
         event = transition
     elif transition == "ALERT_REPEAT":
-        last_notify_at = float(prior.get("last_notify_at", 0.0) or 0.0) if isinstance(prior, dict) else 0.0
-        current_now = time.time() if now is None else float(now)
-        if current_now - last_notify_at >= DEDUP_ALERT_SECONDS:
+        last_event_at = float(prior.get("last_alert_event_at", prior.get("last_notify_at", 0.0)) or 0.0)
+        if notification_required and not incident_notified:
+            event = "ALERT"
+        elif current_now - last_event_at >= DEDUP_ALERT_SECONDS:
             event = "ALERT"
 
     if event == "ALERT" and alerting:
@@ -253,15 +281,19 @@ def run_once(
             "message": observation["message"],
         }
         _append_alert_log(record, alert_log_path)
-        if notify:
+        notification_sent = bool(notify and notification_required)
+        if notification_sent:
             _notify("Scalpr collector ALERT", str(observation["message"]))
         _save_state({
             "current_kind": observation["kind"],
             "last_event": "ALERT",
-            "last_notify_at": time.time() if now is None else float(now),
+            "last_alert_event_at": current_now,
+            "last_notify_at": current_now if notification_sent else prior.get("last_notify_at"),
+            "incident_notified": incident_notified or notification_sent,
         }, state_path)
         print(observation["message"])
-        return {**observation, "event": "ALERT", "notified": True}
+        return {**observation, "event": "ALERT", "notified": notification_sent,
+                "notification_required": notification_required}
 
     if event == "RECOVERED":
         record = {
@@ -274,23 +306,30 @@ def run_once(
             "message": observation["message"],
         }
         _append_alert_log(record, alert_log_path)
-        if notify:
+        notification_sent = bool(notify and incident_notified)
+        if notification_sent:
             _notify("Scalpr collector RECOVERED", str(observation["message"]))
         _save_state({
             "current_kind": observation["kind"],
             "last_event": "RECOVERED",
-            "last_notify_at": time.time() if now is None else float(now),
+            "last_alert_event_at": prior.get("last_alert_event_at"),
+            "last_notify_at": current_now if notification_sent else prior.get("last_notify_at"),
+            "incident_notified": False,
         }, state_path)
         print(observation["message"])
-        return {**observation, "event": "RECOVERED", "notified": True}
+        return {**observation, "event": "RECOVERED", "notified": notification_sent,
+                "notification_required": False}
 
     _save_state({
         "current_kind": observation["kind"],
         "last_event": prior.get("last_event") if isinstance(prior, dict) else None,
+        "last_alert_event_at": prior.get("last_alert_event_at") if isinstance(prior, dict) else None,
         "last_notify_at": prior.get("last_notify_at") if isinstance(prior, dict) else None,
+        "incident_notified": incident_notified if alerting else False,
     }, state_path)
     print(observation["message"])
-    return {**observation, "event": None, "notified": False}
+    return {**observation, "event": None, "notified": False,
+            "notification_required": notification_required}
 
 
 def main(argv: list[str] | None = None) -> int:
