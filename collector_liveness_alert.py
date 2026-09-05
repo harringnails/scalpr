@@ -8,6 +8,7 @@ alert transitions, and appends alert/recovery events to a dedicated log.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import subprocess
@@ -29,6 +30,9 @@ STATE_PATH = ROOT / "collector_alerts_v0.state.json"
 RTH_STALE_SECONDS = 300
 HEARTBEAT_STALE_SECONDS = 300
 DEDUP_ALERT_SECONDS = 900
+STATE_READ_RETRIES = 3
+STATE_READ_RETRY_SECONDS = 0.05
+TRANSIENT_READ_ERRNOS = {errno.EAGAIN, errno.EDEADLK}
 
 
 def utc_now() -> datetime:
@@ -47,14 +51,26 @@ def _parse_status_payload(text: str) -> dict[str, object]:
     return payload
 
 
+def _read_text_with_retry(path: Path) -> str:
+    for attempt in range(STATE_READ_RETRIES):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as exc:
+            retryable = exc.errno in TRANSIENT_READ_ERRNOS and attempt + 1 < STATE_READ_RETRIES
+            if not retryable:
+                raise
+            time.sleep(STATE_READ_RETRY_SECONDS)
+    raise RuntimeError("unreachable")
+
+
 def load_status(path: Path = STATUS_PATH) -> dict[str, object]:
-    return _parse_status_payload(path.read_text(encoding="utf-8"))
+    return _parse_status_payload(_read_text_with_retry(path))
 
 
 def _mtime(path: Path) -> float | None:
     try:
         return path.stat().st_mtime
-    except FileNotFoundError:
+    except OSError:
         return None
 
 
@@ -99,7 +115,7 @@ def evaluate_alert(
     now = time.time() if now is None else float(now)
     try:
         status = load_status(status_path)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         age = None
         if (mtime := _mtime(status_path)) is not None:
             age = now - mtime
@@ -160,10 +176,8 @@ def evaluate_alert(
 
 def _load_state(path: Path = STATE_PATH) -> dict[str, object]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError:
+        payload = json.loads(_read_text_with_retry(path))
+    except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
 

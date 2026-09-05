@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import errno
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,40 @@ def test_missing_status_alerts(tmp_path):
     result = alert.evaluate_alert(status_path=status, decision_paths=(), now=1_000.0)
     assert result["alert"] is True
     assert result["kind"] == "collector_status_unreadable"
+
+
+def test_transient_deadlock_read_is_retried(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    path.write_text('{"current_kind":"ok"}\n', encoding="utf-8")
+    original = Path.read_text
+    attempts = {"count": 0}
+
+    def flaky_read(self, *args, **kwargs):
+        if self == path and attempts["count"] < 2:
+            attempts["count"] += 1
+            raise OSError(errno.EDEADLK, "Resource deadlock avoided")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky_read)
+    monkeypatch.setattr(alert.time, "sleep", lambda _: None)
+
+    assert alert._load_state(path) == {"current_kind": "ok"}
+    assert attempts["count"] == 2
+
+
+def test_persistent_state_read_error_degrades_to_empty_state(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    path.write_text('{}\n', encoding="utf-8")
+
+    def deadlocked_read(self, *args, **kwargs):
+        if self == path:
+            raise OSError(errno.EDEADLK, "Resource deadlock avoided")
+        return Path.read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deadlocked_read)
+    monkeypatch.setattr(alert.time, "sleep", lambda _: None)
+
+    assert alert._load_state(path) == {}
 
 
 def test_dedupe_transition_and_recovery(tmp_path, monkeypatch):
